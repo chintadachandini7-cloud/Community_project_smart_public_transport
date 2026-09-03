@@ -100,6 +100,16 @@ def init_db():
         )
     ''')
     cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            name TEXT,
+            picture TEXT,
+            role TEXT DEFAULT 'passenger',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    cursor.execute('''
         CREATE TABLE IF NOT EXISTS trips (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             bus_id INTEGER,
@@ -163,6 +173,17 @@ def init_db():
         cursor.execute("ALTER TABLE buses ADD COLUMN source_type TEXT")
     if 'verified_at' not in buses_columns:
         cursor.execute("ALTER TABLE buses ADD COLUMN verified_at TEXT")
+
+    # Add email columns to drivers and conductors
+    cursor.execute("PRAGMA table_info(drivers)")
+    drivers_columns = [col['name'] for col in cursor.fetchall()]
+    if 'email' not in drivers_columns:
+        cursor.execute("ALTER TABLE drivers ADD COLUMN email TEXT")
+
+    cursor.execute("PRAGMA table_info(conductors)")
+    conductors_columns = [col['name'] for col in cursor.fetchall()]
+    if 'email' not in conductors_columns:
+        cursor.execute("ALTER TABLE conductors ADD COLUMN email TEXT")
 
         
     cursor.execute("PRAGMA table_info(routes)")

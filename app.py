@@ -6,23 +6,159 @@ import sqlite3
 app = Flask(__name__)
 app.secret_key = 'your-existing-project-secret'
 
+# Admin email whitelist — add your Google emails here
+ADMIN_EMAILS = ['chintadachandini2408@gmail.com']
+
 # Initialize the database and create tables if they don't exist
 database.init_db()
+
+# ==========================================
+# AUTHENTICATION & LOGIN
+# ==========================================
+
+@app.route('/login', strict_slashes=False)
+def login_page():
+    # If already logged in, redirect to appropriate dashboard
+    if 'user_role' in session:
+        return redirect(get_role_redirect(session['user_role']))
+    return render_template('login.html')
+
+@app.route('/auth/google', methods=['POST'])
+def auth_google():
+    data = request.json
+    role = data.get('role', 'passenger')
+    demo_mode = data.get('demo_mode', False)
+    
+    if demo_mode:
+        # Demo mode: assign a demo identity based on role
+        demo_identities = {
+            'passenger': {'email': 'demo_passenger@example.com', 'name': 'Demo Passenger'},
+            'driver': {'email': 'demo_driver@example.com', 'name': 'Test Driver'},
+            'conductor': {'email': 'demo_conductor@example.com', 'name': 'Test Conductor'},
+            'admin': {'email': ADMIN_EMAILS[0], 'name': 'Admin User'},
+        }
+        identity = demo_identities.get(role, demo_identities['passenger'])
+        email = identity['email']
+        name = identity['name']
+        picture = ''
+    else:
+        email = data.get('email', '')
+        name = data.get('name', '')
+        picture = data.get('picture', '')
+        
+        if not email:
+            return jsonify({'success': False, 'error': 'No email provided'}), 400
+    
+    conn = get_db()
+    
+    try:
+        if role == 'admin':
+            if email not in ADMIN_EMAILS and not demo_mode:
+                conn.close()
+                return jsonify({'success': False, 'error': 'This Google account is not authorized for admin access.'}), 403
+            session['user_role'] = 'admin'
+            session['user_email'] = email
+            session['user_name'] = name
+            conn.close()
+            return jsonify({'success': True, 'redirect': '/admin'})
+        
+        elif role == 'driver':
+            if demo_mode:
+                driver = conn.execute("SELECT * FROM drivers LIMIT 1").fetchone()
+            else:
+                driver = conn.execute("SELECT * FROM drivers WHERE email=?", (email,)).fetchone()
+            
+            if not driver and demo_mode:
+                driver = conn.execute("SELECT * FROM drivers LIMIT 1").fetchone()
+            
+            if driver:
+                session['driver_id'] = driver['id']
+                session['driver_name'] = driver['name']
+                session['user_role'] = 'driver'
+                session['user_email'] = email
+                session['user_name'] = name
+                conn.close()
+                return jsonify({'success': True, 'redirect': '/driver/dashboard'})
+            else:
+                conn.close()
+                return jsonify({'success': False, 'error': 'No driver account found for this email. Contact admin to register.'}), 403
+        
+        elif role == 'conductor':
+            if demo_mode:
+                conductor = conn.execute("SELECT * FROM conductors LIMIT 1").fetchone()
+            else:
+                conductor = conn.execute("SELECT * FROM conductors WHERE email=?", (email,)).fetchone()
+            
+            if not conductor and demo_mode:
+                conductor = conn.execute("SELECT * FROM conductors LIMIT 1").fetchone()
+            
+            if conductor:
+                session['conductor_id'] = conductor['id']
+                session['conductor_name'] = conductor['name']
+                session['user_role'] = 'conductor'
+                session['user_email'] = email
+                session['user_name'] = name
+                conn.close()
+                return jsonify({'success': True, 'redirect': '/conductor/dashboard'})
+            else:
+                conn.close()
+                return jsonify({'success': False, 'error': 'No conductor account found for this email. Contact admin to register.'}), 403
+        
+        else:
+            # Passenger — create or find user
+            user = conn.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
+            if not user:
+                conn.execute("INSERT INTO users (email, name, picture, role) VALUES (?, ?, ?, 'passenger')", 
+                           (email, name, picture))
+                conn.commit()
+                user = conn.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
+            
+            session['passenger_id'] = str(user['id'])
+            session['user_role'] = 'passenger'
+            session['user_email'] = email
+            session['user_name'] = name
+            conn.close()
+            return jsonify({'success': True, 'redirect': '/'})
+    
+    except Exception as e:
+        conn.close()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login_page'))
+
+def get_role_redirect(role):
+    redirects = {
+        'passenger': '/',
+        'driver': '/driver/dashboard',
+        'conductor': '/conductor/dashboard',
+        'admin': '/admin',
+    }
+    return redirects.get(role, '/')
 
 import uuid
 @app.route('/', strict_slashes=False)
 def index():
+    if 'user_role' not in session:
+        return redirect(url_for('login_page'))
     if 'passenger_id' not in session:
         session['passenger_id'] = str(uuid.uuid4())
     return render_template('index.html')
 
 @app.route('/admin', strict_slashes=False)
 def admin():
+    if 'user_role' not in session:
+        return redirect(url_for('login_page'))
+    if session.get('user_role') != 'admin':
+        return redirect(url_for('login_page'))
     return render_template('admin.html')
 
 # Helper function to get database connection
 def get_db():
     return database.get_db_connection()
+
 
 # ==========================================
 # REST API ENDPOINTS
@@ -315,14 +451,15 @@ def driver_login():
         if driver:
             session['driver_id'] = driver['id']
             session['driver_name'] = driver['name']
+            session['user_role'] = 'driver'
             return redirect(url_for('driver_dashboard'))
         return "Invalid credentials", 401
-    return render_template('driver_login.html')
+    return redirect(url_for('login_page'))
 
 @app.route('/driver/logout')
 def driver_logout():
-    session.pop('driver_id', None)
-    return redirect(url_for('driver_login'))
+    session.clear()
+    return redirect(url_for('login_page'))
 
 @app.route('/driver/dashboard')
 def driver_dashboard():
@@ -364,14 +501,15 @@ def conductor_login():
         if conductor:
             session['conductor_id'] = conductor['id']
             session['conductor_name'] = conductor['name']
+            session['user_role'] = 'conductor'
             return redirect(url_for('conductor_dashboard'))
         return "Invalid credentials", 401
-    return render_template('conductor_login.html')
+    return redirect(url_for('login_page'))
 
 @app.route('/conductor/logout')
 def conductor_logout():
-    session.pop('conductor_id', None)
-    return redirect(url_for('conductor_login'))
+    session.clear()
+    return redirect(url_for('login_page'))
 
 @app.route('/conductor/dashboard')
 def conductor_dashboard():

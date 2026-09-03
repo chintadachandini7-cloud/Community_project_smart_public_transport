@@ -2,193 +2,306 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Public Transport - Passenger Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Smart Public Transport — Passenger Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+    tailwind.config = {
+        theme: {
+            extend: {
+                colors: {
+                    "primary": "#004d27", "primary-container": "#006837",
+                    "on-primary": "#ffffff", "on-primary-container": "#8ee4a6",
+                    "primary-fixed": "#9ef6b6", "primary-fixed-dim": "#83d99c",
+                    "surface": "#f8f9ff", "surface-dim": "#ccdbf3",
+                    "surface-container": "#e6eeff", "surface-container-low": "#eff4ff",
+                    "surface-container-high": "#dce9ff", "surface-container-highest": "#d5e3fc",
+                    "surface-container-lowest": "#ffffff",
+                    "on-surface": "#0d1c2e", "on-surface-variant": "#3f4940",
+                    "outline": "#6f7a70", "outline-variant": "#bec9be",
+                    "secondary": "#545f73", "secondary-container": "#d5e0f8",
+                    "on-secondary-container": "#586377",
+                    "tertiary": "#683500", "tertiary-container": "#8a4900",
+                    "tertiary-fixed": "#ffdcc3", "on-tertiary-fixed": "#2f1500",
+                    "on-tertiary-fixed-variant": "#6e3900",
+                    "error": "#ba1a1a", "on-error": "#ffffff",
+                    "inverse-surface": "#233144", "inverse-on-surface": "#eaf1ff",
+                },
+                spacing: {
+                    "space-xs": "0.25rem", "space-sm": "0.5rem",
+                    "space-md": "0.75rem", "space-lg": "1rem",
+                    "space-xl": "1.25rem", "space-2xl": "1.5rem",
+                    "gutter-mobile": "1rem",
+                },
+                fontFamily: {
+                    "headline": ["Plus Jakarta Sans", "sans-serif"],
+                    "body": ["Inter", "sans-serif"],
+                },
+            }
+        }
+    }
+    </script>
+    <style>
+        @layer base {
+            html, body { width: 100%; margin: 0; padding: 0; background-color: #f8f9ff; color: #0d1c2e; }
+            body { overscroll-behavior: none; font-family: 'Inter', sans-serif; }
+        }
+        ::-webkit-scrollbar { display: none; }
+
+        /* Tab panels */
+        .tab-panel { display: none; }
+        .tab-panel.active { display: flex; flex-direction: column; }
+
+        /* Map container */
+        #live-map { width: 100%; height: calc(100vh - 160px); z-index: 1; }
+
+        /* Timeline spine */
+        .timeline-spine { position: absolute; left: 23px; top: 16px; bottom: 20px; width: 3px; background: #dce9ff; border-radius: 2px; }
+        .timeline-progress { position: absolute; left: 23px; top: 16px; width: 3px; background: #004d27; border-radius: 2px; transition: height 0.5s ease; }
+
+        /* Stop node styles */
+        .stop-passed .stop-dot { background: #004d27; }
+        .stop-upcoming .stop-dot { background: #d5e3fc; border: 2px solid #94a3b8; }
+        .stop-current .stop-dot { background: #8a4900; }
+
+        /* Bus search result cards */
+        .bus-result-card {
+            background: white; border: 1px solid #e2e8f0; border-radius: 12px;
+            padding: 16px; cursor: pointer; transition: all 0.15s ease;
+        }
+        .bus-result-card:hover { border-color: #004d27; box-shadow: 0 2px 8px rgba(0,77,39,0.1); }
+        .bus-result-card:active { background: #f8fafc; }
+
+        /* Pulse animation for live dot */
+        @keyframes livePulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(1.4)} }
+        .live-pulse { animation: livePulse 1.5s infinite; }
+
+        /* Map floating controls */
+        .map-floating-card {
+            position: absolute; bottom: 16px; left: 16px; right: 16px; z-index: 1000;
+            background: white; border-radius: 12px; padding: 14px 16px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+        }
+    </style>
 </head>
-<body>
-    <header>
-        <h1>Smart Public Transport Tracking</h1>
-    </header>
-    
-    <main class="dashboard-container">
-        <!-- LEFT: Map Section -->
-        <section class="map-section" style="position: relative;">
-            <div id="map"></div>
-            <div style="position: absolute; bottom: 5px; left: 5px; z-index: 1000; background: rgba(255,255,255,0.8); padding: 5px 10px; border-radius: 4px; font-size: 0.8rem; pointer-events: none;">
-                Contains data provided by <b>TGSRTC</b> | &copy; OpenStreetMap contributors
+<body class="bg-surface text-on-surface flex flex-col min-h-screen">
+
+<!-- HEADER -->
+<header class="fixed top-0 w-full z-50 bg-surface/95 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
+    <div class="h-14 px-gutter-mobile flex items-center justify-between gap-space-sm">
+        <div class="flex items-center gap-space-sm min-w-0 flex-1">
+            <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-lg bg-primary-container/20 flex items-center justify-center">
+                    <span class="material-symbols-outlined text-primary text-[20px]">directions_bus</span>
+                </div>
+                <div class="flex flex-col">
+                    <span class="font-headline text-[14px] font-bold text-primary leading-none">Smart Transit</span>
+                    <span class="text-[10px] text-on-surface-variant leading-none mt-0.5">APSRTC • TGSRTC</span>
+                </div>
+            </div>
+            <div class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-primary/10 shrink-0 ml-2">
+                <span class="relative flex h-2 w-2">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+                </span>
+                <span class="text-[11px] font-bold text-primary tracking-wide leading-none">LIVE</span>
+            </div>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+            <a href="/logout" class="h-8 w-8 rounded-full bg-surface-container flex items-center justify-center hover:bg-surface-container-high transition-colors" title="Logout">
+                <span class="material-symbols-outlined text-on-surface-variant text-[20px]">logout</span>
+            </a>
+        </div>
+    </div>
+</header>
+
+<!-- MAIN CONTENT -->
+<main class="flex-1 flex flex-col relative w-full pt-14 pb-16 bg-surface">
+
+    <!-- TAB: Find Bus -->
+    <div id="tab-find" class="tab-panel active w-full px-gutter-mobile gap-space-md pt-3">
+        <!-- Search Bar -->
+        <div class="w-full bg-white rounded-xl p-space-md shadow-sm border border-outline-variant/30">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                    <span class="material-symbols-outlined text-primary text-[22px]">search</span>
+                </div>
+                <input type="text" id="bus-search-input" placeholder="Search buses, routes, or stops..."
+                    class="flex-1 h-11 bg-surface-container-low rounded-lg px-3 text-[14px] border border-outline-variant/40 focus:border-primary focus:outline-none transition-colors"
+                    oninput="searchBuses()">
+            </div>
+        </div>
+
+        <!-- Filter Chips -->
+        <div class="flex gap-2 mt-3 overflow-x-auto pb-1" id="filter-chips">
+            <button class="filter-chip active shrink-0 h-8 px-3 rounded-full text-[12px] font-semibold border transition-colors bg-inverse-surface text-inverse-on-surface border-inverse-surface" data-filter="all" onclick="setFilter('all', this)">All</button>
+            <button class="filter-chip shrink-0 h-8 px-3 rounded-full text-[12px] font-semibold border transition-colors bg-white text-on-surface border-outline-variant" data-filter="APSRTC" onclick="setFilter('APSRTC', this)">APSRTC</button>
+            <button class="filter-chip shrink-0 h-8 px-3 rounded-full text-[12px] font-semibold border transition-colors bg-white text-on-surface border-outline-variant" data-filter="TGSRTC" onclick="setFilter('TGSRTC', this)">TGSRTC</button>
+            <button class="filter-chip shrink-0 h-8 px-3 rounded-full text-[12px] font-semibold border transition-colors bg-white text-on-surface border-outline-variant" data-filter="live" onclick="setFilter('live', this)">Live Only</button>
+        </div>
+
+        <!-- Bus Results List -->
+        <div class="flex flex-col gap-3 mt-3 pb-4" id="bus-results-list">
+            <div class="text-center py-8 text-on-surface-variant text-[14px]">
+                <span class="material-symbols-outlined text-[40px] block mb-2 opacity-40">directions_bus</span>
+                Loading available buses...
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB: Live Radar (OpenStreetMap) -->
+    <div id="tab-map" class="tab-panel w-full relative" style="flex:1;">
+        <div id="live-map"></div>
+        <!-- Floating card on map for selected bus -->
+        <div class="map-floating-card" id="map-bus-card" style="display:none;">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <span class="material-symbols-outlined text-primary text-[20px]">directions_bus</span>
+                    <div>
+                        <span class="font-headline text-[14px] font-bold" id="map-bus-number">--</span>
+                        <span class="text-[12px] text-on-surface-variant ml-1" id="map-bus-route">--</span>
+                    </div>
+                </div>
+                <div class="flex items-center gap-1">
+                    <span class="w-2 h-2 rounded-full live-pulse" id="map-bus-status-dot" style="background:#16a34a;"></span>
+                    <span class="text-[11px] font-bold" id="map-bus-status">--</span>
+                </div>
+            </div>
+            <div class="flex items-center justify-between mt-2 pt-2 border-t border-outline-variant/30">
+                <div class="text-[12px] text-on-surface-variant">
+                    <span class="font-semibold text-on-surface" id="map-bus-next-stop">--</span> • Next Stop
+                </div>
+                <button class="h-8 px-3 rounded-lg bg-primary text-on-primary text-[12px] font-bold" onclick="trackBusFromMap()">Track Progress</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB: Stop-by-Stop Progress -->
+    <div id="tab-progress" class="tab-panel w-full px-gutter-mobile gap-space-md pt-3 overflow-y-auto" style="max-height: calc(100vh - 140px);">
+        <!-- No bus selected state -->
+        <div id="progress-empty" class="text-center py-12 text-on-surface-variant">
+            <span class="material-symbols-outlined text-[48px] block mb-3 opacity-30">timeline</span>
+            <p class="font-headline text-[16px] font-bold text-on-surface mb-1">No Bus Selected</p>
+            <p class="text-[13px]">Select a bus from "Find Bus" or "Live Radar" to see stop-by-stop progress</p>
+        </div>
+
+        <!-- Active tracking content (hidden until bus selected) -->
+        <div id="progress-content" style="display:none;" class="flex flex-col gap-3 pb-6">
+            <!-- Selected Bus Banner -->
+            <div class="w-full bg-primary-container text-on-primary rounded-xl p-space-md shadow-md flex flex-col gap-1 relative overflow-hidden">
+                <div class="flex items-center justify-between gap-2">
+                    <div class="flex items-center gap-2">
+                        <span class="px-2 py-0.5 rounded bg-primary-fixed text-on-primary-fixed font-body text-[15px] font-bold uppercase tracking-wide" id="prog-bus-code">--</span>
+                        <span class="px-2 py-0.5 rounded bg-white/20 text-on-primary text-[11px] font-bold uppercase" id="prog-service-type">--</span>
+                    </div>
+                    <div class="flex items-center gap-1 text-on-primary-container">
+                        <span class="material-symbols-outlined text-[16px]">verified</span>
+                        <span class="text-[11px] font-semibold" id="prog-operator">--</span>
+                    </div>
+                </div>
+                <h1 class="font-headline text-[18px] font-bold text-on-primary truncate mt-1" id="prog-route-name">--</h1>
             </div>
 
-            <div class="card" id="route-stops-card" style="display:none; max-height: 400px; overflow-y: auto;">
-                <h2>Route & Stops</h2>
-                <div id="route-stops-container"></div>
-            </div>
+            <!-- Telemetry Metrics -->
+            <div class="w-full bg-white rounded-xl p-space-md shadow-sm flex flex-col gap-3">
+                <!-- Next Stop -->
+                <div class="bg-surface-container-low rounded-xl p-space-md flex items-center justify-between gap-2">
+                    <div class="flex items-start gap-3 min-w-0">
+                        <div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                            <span class="material-symbols-outlined text-primary text-[22px]">alt_route</span>
+                        </div>
+                        <div class="flex flex-col min-w-0">
+                            <span class="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Approaching Next Stop</span>
+                            <span class="font-headline text-[18px] font-bold text-on-surface truncate" id="prog-next-stop">--</span>
+                            <span class="text-[12px] text-primary font-bold" id="prog-next-eta">--</span>
+                        </div>
+                    </div>
+                    <span class="px-2.5 py-1 rounded-full bg-tertiary-fixed text-on-tertiary-fixed text-[12px] font-semibold shrink-0">Live ETA</span>
+                </div>
 
-        </section>
-
-        <!-- RIGHT: Dashboard Cards -->
-        <section class="info-section">
-            <!-- Filter Panel -->
-            <div class="card filter-card">
-                <h2>🔎 Search Network</h2>
-                <input type="text" id="filter-search" placeholder="Search buses, routes, or stops..." onkeyup="applyFilters()" style="width: 100%; padding: 10px; margin-bottom: 15px; border-radius: 4px; border: 1px solid #ccc; box-sizing: border-box;">
-                
-                <label>Operator:</label>
-                <select id="filter-operator" onchange="applyFilters()">
-                    <option value="All">All Operators</option>
-                    <option value="APSRTC">APSRTC</option>
-                    <option value="TGSRTC">TGSRTC</option>
-                </select>
-                
-                <label>Area:</label>
-                <select id="filter-area" onchange="applyFilters()">
-                    <option value="All">All Areas</option>
-                    <option value="CITY">City</option>
-                    <option value="TOWN">Town</option>
-                    <option value="VILLAGE">Village / Rural</option>
-                </select>
-                
-                <label>Service:</label>
-                <select id="filter-service" onchange="applyFilters()">
-                    <option value="All">All Services</option>
-                    <option value="Pallevelugu">Pallevelugu</option>
-                    <option value="Express">Express</option>
-                    <option value="Super Luxury">Super Luxury</option>
-                </select>
-                
-                <label>Status:</label>
-                <select id="filter-status" onchange="applyFilters()">
-                    <option value="All">All Statuses</option>
-                    <option value="Live">Live (Active Trip)</option>
-                    <option value="Delayed">Delayed</option>
-                    <option value="On Time">On Time</option>
-                </select>
-            </div>
-
-            
-            <!-- Alert Center -->
-            <div class="card alert-card" id="passenger-alert-center" style="display:none; border-left: 5px solid #dc3545; background-color: #fff8f8; margin-bottom: 20px;">
-                <h3 style="color: #dc3545; margin-top: 0;">🔴 Alert Center</h3>
-                <div id="passenger-alerts-list">
-                    <!-- Dynamic alerts -->
+                <!-- Distance & Timings -->
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="bg-surface-container-low rounded-xl p-3 flex flex-col gap-1">
+                        <div class="flex items-center gap-1 text-on-surface-variant">
+                            <span class="material-symbols-outlined text-[16px]">straighten</span>
+                            <span class="text-[11px] font-bold uppercase">Distance</span>
+                        </div>
+                        <span class="font-headline text-[18px] font-bold text-on-surface" id="prog-distance">--</span>
+                        <span class="text-[12px] text-on-surface-variant" id="prog-total-dist">--</span>
+                    </div>
+                    <div class="bg-surface-container-low rounded-xl p-3 flex flex-col gap-1">
+                        <div class="flex items-center gap-1 text-on-surface-variant">
+                            <span class="material-symbols-outlined text-[16px]">schedule</span>
+                            <span class="text-[11px] font-bold uppercase">Status</span>
+                        </div>
+                        <span class="font-headline text-[18px] font-bold" id="prog-delay-status" style="color: #004d27;">ON TIME</span>
+                        <span class="text-[12px] text-on-surface-variant" id="prog-delay-detail">--</span>
+                    </div>
                 </div>
             </div>
 
-            
-            <!-- Complaints Section -->
-            <div class="card" id="passenger-complaints-section" style="margin-top: 20px;">
-                <h2 style="text-align: center;">Feedback / Complaints</h2>
-                
-                <div style="background: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
-                    <h3>Submit a Complaint</h3>
-                    <form id="complaint-form" onsubmit="submitComplaint(event)">
-                        <div style="margin-bottom: 10px;">
-                            <label>Bus:</label>
-                            <select id="complaint-bus" style="width:100%; padding:8px;">
-                                <option value="">-- Select Bus (Optional) --</option>
-                            </select>
-                        </div>
-                        <div style="margin-bottom: 10px;">
-                            <label>Route:</label>
-                            <select id="complaint-route" style="width:100%; padding:8px;">
-                                <option value="">-- Select Route (Optional) --</option>
-                            </select>
-                        </div>
-                        <div style="margin-bottom: 10px;">
-                            <label>Category *:</label>
-                            <select id="complaint-category" style="width:100%; padding:8px;" required>
-                                <option value="">-- Select Category --</option>
-                                <option value="Bus Delay">Bus Delay</option>
-                                <option value="GPS / Tracking Issue">GPS / Tracking Issue</option>
-                                <option value="Driver / Conductor Issue">Driver / Conductor Issue</option>
-                                <option value="Bus Condition">Bus Condition</option>
-                                <option value="Route / Stop Issue">Route / Stop Issue</option>
-                                <option value="Other">Other</option>
-                            </select>
-                        </div>
-                        <div style="margin-bottom: 10px;">
-                            <label>Description *:</label>
-                            <textarea id="complaint-description" rows="3" style="width:100%; padding:8px;" required></textarea>
-                        </div>
-                        <button type="submit" class="action-btn">Submit Complaint</button>
-                        <p id="complaint-msg" style="margin-top: 10px; font-weight: bold;"></p>
-                    </form>
+            <!-- Stop-by-Stop Timeline -->
+            <div class="w-full bg-white rounded-xl p-space-md shadow-sm flex flex-col gap-3">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <span class="material-symbols-outlined text-primary text-[20px]">route</span>
+                        <h2 class="font-headline text-[18px] font-bold text-on-surface">Stop-by-Stop Progress</h2>
+                    </div>
+                    <button class="h-8 px-2.5 rounded bg-surface-container hover:bg-surface-container-high transition-colors flex items-center gap-1 text-on-surface" onclick="refreshProgress()">
+                        <span class="material-symbols-outlined text-[16px]" id="refresh-icon">refresh</span>
+                        <span class="text-[11px] font-bold uppercase">Sync</span>
+                    </button>
                 </div>
-                
-                <div style="background: #fff; border: 1px solid #ddd; padding: 15px; border-radius: 5px;">
-                    <h3>My Complaints</h3>
-                    <table style="width: 100%; border-collapse: collapse;">
-                        <thead>
-                            <tr style="background:#eee; text-align:left;">
-                                <th style="padding:8px;">ID</th>
-                                <th>Category</th>
-                                <th>Status</th>
-                                <th>Date</th>
-                                <th>Admin Response</th>
-                            </tr>
-                        </thead>
-                        <tbody id="my-complaints-body">
-                        </tbody>
-                    </table>
+
+                <!-- Dynamic Timeline -->
+                <div class="relative flex flex-col pl-4 pr-1 py-2" id="progress-timeline">
+                    <!-- Populated by JS -->
                 </div>
             </div>
 
-            <!-- Bus Selection -->
-
-            <div class="card search-card">
-                <h2 style="text-align: center;">↓<br><br>Available Buses</h2>
-                <select id="bus-selector">
-                    <option value="">-- Loading Buses --</option>
+            <!-- Complaints section -->
+            <div class="w-full bg-white rounded-xl p-space-md shadow-sm flex flex-col gap-3">
+                <h3 class="font-headline text-[16px] font-bold text-on-surface">Report an Issue</h3>
+                <select id="complaint-category" class="h-11 bg-surface-container-low rounded-lg px-3 text-[14px] border border-outline-variant/40">
+                    <option value="">Select category...</option>
+                    <option value="Bus Delay">Bus Delay</option>
+                    <option value="GPS / Tracking Issue">GPS / Tracking Issue</option>
+                    <option value="Driver / Conductor Issue">Driver / Conductor Issue</option>
+                    <option value="Bus Condition">Bus Condition</option>
+                    <option value="Route / Stop Issue">Route / Stop Issue</option>
+                    <option value="Other">Other</option>
                 </select>
-                <button id="simulate-btn" class="action-btn" style="display:none;" onclick="toggleSimulation()">Start Simulation</button>
+                <textarea id="complaint-description" rows="2" placeholder="Describe the issue..." class="bg-surface-container-low rounded-lg px-3 py-2 text-[14px] border border-outline-variant/40 resize-none"></textarea>
+                <button onclick="submitComplaint()" class="h-10 rounded-lg bg-primary text-on-primary text-[14px] font-bold transition-colors hover:bg-primary-container">Submit Report</button>
+                <p id="complaint-msg" class="text-[12px] font-semibold text-center"></p>
             </div>
+        </div>
+    </div>
 
-            <div class="card info-card" id="bus-info" style="display:none;">
-                <h2>Bus Information</h2>
-                <p><strong>Operator:</strong> <span id="info-bus-operator">--</span> (<span id="info-bus-service">--</span>)</p>
-                <p><strong>Vehicle ID:</strong> <span id="info-bus-number">--</span></p>
-                <p><strong>Name:</strong> <span id="info-bus-name">--</span></p>
-                
-                <hr style="margin:10px 0; border:0; border-top:1px solid #eee;">
-                <div id="data-warning-box" style="background-color: #fff3cd; padding: 10px; border-radius: 4px; font-size: 0.9rem; border-left: 4px solid #ffc107;">
-                    <p style="margin: 0 0 5px 0;"><span id="info-gps-status" style="font-weight: bold; color: #856404;">GPS: SIMULATED</span></p>
-                    <p style="margin: 0; color: #856404;"><strong>Source:</strong> <span id="info-gps-source">Development/Demo Fallback</span></p>
-                    <p style="margin: 5px 0 0 0; color: #856404; font-size: 0.8rem;"><strong>Data:</strong> <span id="info-data-source">--</span></p>
-                </div>
-            </div>
+</main>
 
-            <div class="card eta-card" id="eta-info" style="display:none;">
-                <div id="delay-alert-box" style="display:none; margin: 15px 0; padding: 15px; border-radius: 5px;"></div>
-                
-                <h3>Live Tracking</h3>
-                <p><strong>Next Stop:</strong> <span id="info-next-stop">--</span></p>
-                <p><strong>ETA:</strong> <span id="info-eta">--</span></p>
-                
-                <hr style="margin:10px 0; border:0; border-top:1px solid #eee;">
-                
-                <h3>Last Arrival</h3>
-                <p><strong>Stop:</strong> <span id="info-last-stop">--</span></p>
-                <p><strong>ATA:</strong> <span id="info-ata">--</span></p>
-                <p><strong>Status:</strong> <span id="info-delay" class="badge">--</span></p>
-            </div>
-            
-            <div class="card updates-card">
-                <h2>Service Updates</h2>
-                <ul id="updates-list" style="list-style-type: none; padding-left: 0;">
-                    <li>Loading updates...</li>
-                </ul>
-            </div>
+<!-- BOTTOM NAVIGATION -->
+<nav class="fixed bottom-0 w-full z-50 bg-surface/90 backdrop-blur-xl shadow-[0_-2px_10px_rgba(0,0,0,0.04)] border-t border-outline-variant/20">
+    <div class="h-14 px-gutter-mobile grid grid-cols-3 items-center">
+        <button class="nav-tab flex flex-col items-center justify-center h-full gap-0.5 transition-colors text-primary font-bold" data-tab="find" onclick="switchTab('find')">
+            <span class="material-symbols-outlined text-[24px]">directions_bus</span>
+            <span class="text-[11px] font-bold">Find Bus</span>
+        </button>
+        <button class="nav-tab flex flex-col items-center justify-center h-full gap-0.5 transition-colors text-on-surface-variant" data-tab="map" onclick="switchTab('map')">
+            <span class="material-symbols-outlined text-[24px]">explore</span>
+            <span class="text-[11px] font-bold">Live Radar</span>
+        </button>
+        <button class="nav-tab flex flex-col items-center justify-center h-full gap-0.5 transition-colors text-on-surface-variant" data-tab="progress" onclick="switchTab('progress')">
+            <span class="material-symbols-outlined text-[24px]">timeline</span>
+            <span class="text-[11px] font-bold">Progress</span>
+        </button>
+    </div>
+</nav>
 
-            <div class="card" id="route-stops-card" style="display:none; max-height: 400px; overflow-y: auto;">
-                <h2>Route & Stops</h2>
-                <div id="route-stops-container"></div>
-            </div>
-
-        </section>
-    </main>
-
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="{{ url_for('static', filename='js/passenger.js') }}"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="{{ url_for('static', filename='js/passenger.js') }}"></script>
 </body>
 </html>
