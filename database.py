@@ -284,14 +284,8 @@ def _init_db_worker():
         cursor.execute("INSERT INTO drivers (name, phone, password) VALUES ('Test Driver', '1234567890', 'password123')")
         cursor.execute("INSERT INTO conductors (name, phone, password) VALUES ('Test Conductor', '0987654321', 'password123')")
         
-    # Only seed routes if empty. NEVER delete existing data.
-    cursor.execute("SELECT COUNT(*) FROM routes")
-    if cursor.fetchone()[0] == 0:
-        print("Database is empty. Adding official sample records...")
-        seed_data(cursor)
-        
-    # Save (commit) the changes and close the connection
-        cursor.execute('''
+    # Sample seeding disabled — waiting for user dataset
+    cursor.execute('''
         CREATE TABLE IF NOT EXISTS complaints (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             passenger_id TEXT NOT NULL,
@@ -311,44 +305,4 @@ def _init_db_worker():
     conn.commit()
     conn.close()
     print("Database initialization complete.")
-
-def seed_data(cursor):
-    """Inserts official RTC sample records into the database for testing inter-city connectivity."""
-    
-    # 1. APSRTC Route: Village -> Town -> City
-    cursor.execute("INSERT INTO routes (route_name, source, destination, operator, service_type, data_source) VALUES (?, ?, ?, ?, ?, ?)", 
-                   ('APSRTC Pallevelugu Corridor', 'Neerukonda', 'Vijayawada', 'APSRTC', 'Pallevelugu', 'OFFICIAL'))
-    route1_id = cursor.lastrowid
-
-    stops1 = [
-        (route1_id, 'Neerukonda', 16.4385, 80.5152, 1, 'VILLAGE', 'OFFICIAL'),
-        (route1_id, 'Kuragallu', 16.4312, 80.5367, 2, 'VILLAGE', 'OFFICIAL'),
-        (route1_id, 'Mangalagiri Bus Station', 16.4316, 80.5658, 3, 'TOWN', 'OFFICIAL'),
-        (route1_id, 'Tadepalli', 16.4719, 80.6127, 4, 'TOWN', 'OFFICIAL'),
-        (route1_id, 'Vijayawada PNBS', 16.5062, 80.6480, 5, 'CITY', 'OFFICIAL')
-    ]
-    cursor.executemany("INSERT INTO stops (route_id, stop_name, latitude, longitude, stop_order, area_type, data_source) VALUES (?, ?, ?, ?, ?, ?, ?)", stops1)
-
-    buses1 = [
-        ('Simulated Vehicle', 'Demo Bus', route1_id, 16.4385, 80.5152, 'Active', 'APSRTC', 'Pallevelugu', 'SIMULATED')
-    ]
-    cursor.executemany("INSERT INTO buses (bus_number, bus_name, route_id, current_latitude, current_longitude, status, operator, service_type, data_source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", buses1)
-
-    # 2. TGSRTC Route: Village -> Town -> City
-    cursor.execute("INSERT INTO routes (route_name, source, destination, operator, service_type, data_source) VALUES (?, ?, ?, ?, ?, ?)", 
-                   ('TGSRTC Pallevelugu Corridor', 'Moinabad', 'Hyderabad', 'TGSRTC', 'Pallevelugu', 'OFFICIAL'))
-    route2_id = cursor.lastrowid
-
-    stops2 = [
-        (route2_id, 'Moinabad Village', 17.3308, 78.2721, 1, 'VILLAGE', 'OFFICIAL'),
-        (route2_id, 'Chevella', 17.3106, 78.1362, 2, 'TOWN', 'OFFICIAL'),
-        (route2_id, 'Mehdipatnam', 17.3934, 78.4414, 3, 'CITY', 'OFFICIAL'),
-        (route2_id, 'MGBS Hyderabad', 17.3770, 78.4800, 4, 'CITY', 'OFFICIAL')
-    ]
-    cursor.executemany("INSERT INTO stops (route_id, stop_name, latitude, longitude, stop_order, area_type, data_source) VALUES (?, ?, ?, ?, ?, ?, ?)", stops2)
-
-    buses2 = [
-        ('Simulated Vehicle', 'Demo Bus', route2_id, 17.3308, 78.2721, 'Active', 'TGSRTC', 'Pallevelugu', 'SIMULATED')
-    ]
-    cursor.executemany("INSERT INTO buses (bus_number, bus_name, route_id, current_latitude, current_longitude, status, operator, service_type, data_source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", buses2)
 

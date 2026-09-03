@@ -415,53 +415,9 @@ CREATE TRIGGER on_auth_user_created
     FOR EACH ROW EXECUTE FUNCTION handle_new_user();
 
 -- ============================================================
--- 12. SAMPLE DATA
+-- 12. DATA INITIALIZATION
 -- ============================================================
--- Insert demo data for testing. Uses deterministic UUIDs for clarity.
-
--- Sample Buses
-INSERT INTO buses (id, bus_number, route_number, route_name, capacity, bus_type, status)
-VALUES
-    ('a1000000-0000-0000-0000-000000000001', 'AP-07-TA-1234', 'R-116K', 'Vijayawada PNBS → Guntur RTC', 52, 'Express', 'Active'),
-    ('a1000000-0000-0000-0000-000000000002', 'AP-11-Z-4589',  'R-222V', 'Tirupati → Nellore', 40, 'Palle Velugu', 'Active'),
-    ('a1000000-0000-0000-0000-000000000003', 'TS-08-UF-9901', 'R-300A', 'Hyderabad MGBS → Warangal', 48, 'AC Deluxe', 'Maintenance')
-ON CONFLICT (bus_number) DO NOTHING;
-
--- Sample Drivers
-INSERT INTO drivers (id, driver_name, employee_id, phone, experience_years, status)
-VALUES
-    ('d1000000-0000-0000-0000-000000000001', 'Ramesh Kumar',    'DRV-1001', '9876543210', 12, 'Active'),
-    ('d1000000-0000-0000-0000-000000000002', 'Suresh Reddy',    'DRV-1002', '9876543211', 8,  'Active'),
-    ('d1000000-0000-0000-0000-000000000003', 'Venkatesh Rao',   'DRV-1003', '9876543212', 5,  'On Leave')
-ON CONFLICT (employee_id) DO NOTHING;
-
--- Sample Conductors
-INSERT INTO conductors (id, conductor_name, employee_id, phone, experience_years, status)
-VALUES
-    ('c1000000-0000-0000-0000-000000000001', 'Srikanth Babu',   'CND-2001', '9123456780', 10, 'Active'),
-    ('c1000000-0000-0000-0000-000000000002', 'Prasad Naidu',    'CND-2002', '9123456781', 6,  'Active'),
-    ('c1000000-0000-0000-0000-000000000003', 'Mahesh Varma',    'CND-2003', '9123456782', 3,  'Inactive')
-ON CONFLICT (employee_id) DO NOTHING;
-
--- Sample Bus Assignments
-INSERT INTO bus_assignments (bus_id, driver_id, conductor_id, shift, assigned_date, status)
-VALUES
-    ('a1000000-0000-0000-0000-000000000001', 'd1000000-0000-0000-0000-000000000001', 'c1000000-0000-0000-0000-000000000001', 'Morning',  CURRENT_DATE, 'Active'),
-    ('a1000000-0000-0000-0000-000000000002', 'd1000000-0000-0000-0000-000000000002', 'c1000000-0000-0000-0000-000000000002', 'Full Day', CURRENT_DATE, 'Active')
-ON CONFLICT DO NOTHING;
-
--- Sample Bus Locations
-INSERT INTO bus_locations (bus_id, latitude, longitude, speed, current_stop, next_stop)
-VALUES
-    ('a1000000-0000-0000-0000-000000000001', 16.5062, 80.6480, 35.5, 'Vijayawada PNBS', 'Benz Circle'),
-    ('a1000000-0000-0000-0000-000000000002', 13.6288, 79.4192, 42.0, 'Tirupati RTC', 'Naidupeta')
-ON CONFLICT (bus_id) DO UPDATE SET
-    latitude = EXCLUDED.latitude,
-    longitude = EXCLUDED.longitude,
-    speed = EXCLUDED.speed,
-    current_stop = EXCLUDED.current_stop,
-    next_stop = EXCLUDED.next_stop,
-    updated_at = NOW();
+-- Ready for real dataset import (mock/predefined data removed).
 
 -- ============================================================
 -- SETUP COMPLETE ✅
