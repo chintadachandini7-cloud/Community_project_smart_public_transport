@@ -27,7 +27,7 @@ A community-focused smart public transport tracking and management application d
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/chintadachandini2408-lang/Community_project_smart_public_transport.git
+   git clone https://github.com/chintadachandini7-cloud/Community_project_smart_public_transport.git
    cd Community_project_smart_public_transport
    ```
 
