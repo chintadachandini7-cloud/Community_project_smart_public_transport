@@ -1,7 +1,8 @@
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for
-import database
+import os
 import uuid
 import sqlite3
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for
+import database
 
 app = Flask(__name__)
 app.secret_key = 'your-existing-project-secret'
@@ -18,10 +19,51 @@ database.init_db()
 
 @app.route('/login', strict_slashes=False)
 def login_page():
-    # If already logged in, redirect to appropriate dashboard
-    if 'user_role' in session:
-        return redirect(get_role_redirect(session['user_role']))
-    return render_template('login.html')
+    supabase_url = os.environ.get('SUPABASE_URL', 'https://vqbachaigfcxcjqcbisa.supabase.co')
+    supabase_anon_key = os.environ.get('SUPABASE_ANON_KEY', '')
+    return render_template('login.html', supabase_url=supabase_url, supabase_anon_key=supabase_anon_key)
+
+@app.route('/auth/callback', strict_slashes=False)
+def auth_callback():
+    supabase_url = os.environ.get('SUPABASE_URL', 'https://vqbachaigfcxcjqcbisa.supabase.co')
+    supabase_anon_key = os.environ.get('SUPABASE_ANON_KEY', '')
+    return render_template('auth_callback.html', supabase_url=supabase_url, supabase_anon_key=supabase_anon_key)
+
+@app.route('/api/auth/set-session', methods=['POST'])
+def set_session():
+    data = request.json or {}
+    user_id = data.get('user_id')
+    email = data.get('email')
+    role = (data.get('role') or '').lower()
+    name = data.get('name', email)
+    
+    # Server-side verification from Supabase profiles
+    sb = database.get_supabase()
+    if sb and user_id:
+        try:
+            prof = sb.table('profiles').select('*').eq('id', user_id).maybe_single().execute()
+            if prof and prof.data:
+                role = (prof.data.get('role') or role).lower()
+                email = prof.data.get('email', email)
+                name = prof.data.get('full_name', name)
+        except Exception as e:
+            print("Server-side profile verification notice:", e)
+
+    session['user_role'] = role
+    session['user_email'] = email
+    session['user_name'] = name
+    session['user_id'] = user_id
+
+    if role == 'driver':
+        session['driver_id'] = user_id
+        session['driver_name'] = name
+    elif role == 'conductor':
+        session['conductor_id'] = user_id
+        session['conductor_name'] = name
+    elif role in ['user', 'passenger']:
+        session['passenger_id'] = user_id
+
+    return jsonify({'success': True})
 
 @app.route('/auth/google', methods=['POST'])
 def auth_google():
@@ -157,26 +199,35 @@ def logout():
 
 def get_role_redirect(role):
     redirects = {
-        'passenger': '/',
+        'passenger': '/user/dashboard',
+        'user': '/user/dashboard',
         'driver': '/driver/dashboard',
         'conductor': '/conductor/dashboard',
-        'admin': '/admin',
+        'admin': '/admin/dashboard',
     }
-    return redirects.get(role, '/')
+    return redirects.get(role, '/user/dashboard')
 
 import uuid
-@app.route('/', strict_slashes=False)
-def index():
-    if 'user_role' not in session:
-        return redirect(url_for('login_page'))
+
+# 1. Passenger / User Dashboard — NO authentication required!
+@app.route('/user/dashboard', strict_slashes=False)
+def user_dashboard():
     if 'passenger_id' not in session:
         session['passenger_id'] = str(uuid.uuid4())
+    session['user_role'] = 'passenger'
     return render_template('index.html')
 
+@app.route('/', strict_slashes=False)
+def index():
+    # If user has an active session, send to their dashboard; otherwise show login
+    if 'user_role' in session:
+        return redirect(get_role_redirect(session['user_role']))
+    return redirect(url_for('login_page'))
+
+# 4. Administrator Dashboard — Strictly protected by role = 'admin'
 @app.route('/admin', strict_slashes=False)
+@app.route('/admin/dashboard', strict_slashes=False)
 def admin():
-    if 'user_role' not in session:
-        return redirect(url_for('login_page'))
     if session.get('user_role') != 'admin':
         return redirect(url_for('login_page'))
     return render_template('admin.html')
@@ -523,17 +574,24 @@ def driver_logout():
     session.clear()
     return redirect(url_for('login_page'))
 
+# 2. Driver Dashboard — Strictly protected by role = 'driver'
 @app.route('/driver/dashboard')
 def driver_dashboard():
-    if 'driver_id' not in session:
-        return redirect(url_for('driver_login'))
+    if session.get('user_role') != 'driver':
+        return redirect(url_for('login_page', role='driver', error='unauthorized'))
     
-    conn = get_db()
-    # Check if driver has an active trip
-    trip = conn.execute("SELECT t.*, b.bus_number, b.bus_name, b.operator, b.service_type, r.route_name FROM trips t JOIN buses b ON t.bus_id = b.id LEFT JOIN routes r ON t.route_id = r.id WHERE t.driver_id=? AND t.status='Active'", (session['driver_id'],)).fetchone()
-    conn.close()
+    trip = None
+    try:
+        conn = get_db()
+        driver_id = session.get('driver_id')
+        if driver_id:
+            trip = conn.execute("SELECT t.*, b.bus_number, b.bus_name, b.operator, b.service_type, r.route_name FROM trips t JOIN buses b ON t.bus_id = b.id LEFT JOIN routes r ON t.route_id = r.id WHERE t.driver_id=? AND t.status='Active'", (driver_id,)).fetchone()
+        conn.close()
+    except Exception as e:
+        print("Driver trip query notice:", e)
     
-    return render_template('driver_dashboard.html', driver_name=session['driver_name'], trip=trip)
+    driver_name = session.get('driver_name', session.get('user_name', 'Driver'))
+    return render_template('driver_dashboard.html', driver_name=driver_name, trip=trip)
 
 @app.route('/api/bus/by-number/<bus_number>', methods=['GET'])
 def get_bus_by_number(bus_number):
@@ -573,23 +631,30 @@ def conductor_logout():
     session.clear()
     return redirect(url_for('login_page'))
 
+# 3. Conductor Dashboard — Strictly protected by role = 'conductor'
 @app.route('/conductor/dashboard')
 def conductor_dashboard():
-    if 'conductor_id' not in session:
-        return redirect(url_for('conductor_login'))
+    if session.get('user_role') != 'conductor':
+        return redirect(url_for('login_page', role='conductor', error='unauthorized'))
     
-    conn = get_db()
-    # Check if conductor has an active trip
-    trip = conn.execute('''
-        SELECT t.*, b.bus_number, b.bus_name, b.operator, b.service_type, b.delay_status, b.delay_minutes, r.route_name 
-        FROM trips t 
-        JOIN buses b ON t.bus_id = b.id 
-        LEFT JOIN routes r ON t.route_id = r.id 
-        WHERE t.conductor_id=? AND t.status='Active'
-    ''', (session['conductor_id'],)).fetchone()
-    conn.close()
+    trip = None
+    try:
+        conn = get_db()
+        conductor_id = session.get('conductor_id')
+        if conductor_id:
+            trip = conn.execute('''
+                SELECT t.*, b.bus_number, b.bus_name, b.operator, b.service_type, b.delay_status, b.delay_minutes, r.route_name 
+                FROM trips t 
+                JOIN buses b ON t.bus_id = b.id 
+                LEFT JOIN routes r ON t.route_id = r.id 
+                WHERE t.conductor_id=? AND t.status='Active'
+            ''', (conductor_id,)).fetchone()
+        conn.close()
+    except Exception as e:
+        print("Conductor trip query notice:", e)
     
-    return render_template('conductor_dashboard.html', conductor_name=session['conductor_name'], trip=trip)
+    conductor_name = session.get('conductor_name', session.get('user_name', 'Conductor'))
+    return render_template('conductor_dashboard.html', conductor_name=conductor_name, trip=trip)
 
 @app.route('/api/conductor/join-trip', methods=['POST'])
 def conductor_join_trip():

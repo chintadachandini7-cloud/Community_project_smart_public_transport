@@ -3,503 +3,1027 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Public Transport — Login</title>
+    <title>Smart Public Transport — Bus Tracking & Management System</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <!-- Supabase JS Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         :root {
-            --primary: #004d27;
-            --primary-container: #006837;
-            --on-primary: #ffffff;
-            --on-primary-container: #8ee4a6;
-            --surface: #f8f9ff;
-            --surface-container: #e6eeff;
-            --surface-container-low: #eff4ff;
-            --surface-container-high: #dce9ff;
-            --on-surface: #0d1c2e;
-            --on-surface-variant: #3f4940;
-            --outline: #6f7a70;
-            --outline-variant: #bec9be;
-            --error: #ba1a1a;
-            --tertiary: #683500;
-            --tertiary-container: #8a4900;
-            --secondary: #545f73;
-            --secondary-container: #d5e0f8;
+            --bg-canvas: #F8FAFC;
+            --surface: #FFFFFF;
+            --text-main: #0F172A;
+            --text-muted: #64748B;
+            --border-subtle: #E2E8F0;
+            --border-hover: #CBD5E1;
+
+            /* Role Accent Colors */
+            --role-passenger: #2563EB;
+            --role-passenger-bg: #EFF6FF;
+            --role-passenger-border: #BFDBFE;
+
+            --role-driver: #16A34A;
+            --role-driver-bg: #F0FDF4;
+            --role-driver-border: #BBF7D0;
+
+            --role-conductor: #9333EA;
+            --role-conductor-bg: #FAF5FF;
+            --role-conductor-border: #E9D5FF;
+
+            --role-admin: #EA580C;
+            --role-admin-bg: #FFF7ED;
+            --role-admin-border: #FED7AA;
+
+            --shadow-card: 0 4px 20px -2px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.04);
+            --shadow-hover: 0 12px 28px -4px rgba(15, 23, 42, 0.12), 0 4px 10px -2px rgba(15, 23, 42, 0.06);
         }
 
         body {
             font-family: 'Inter', sans-serif;
-            background: var(--surface);
-            color: var(--on-surface);
+            background: linear-gradient(180deg, #F0F7FF 0%, #FFFFFF 50%, #F8FAFC 100%);
+            color: var(--text-main);
             min-height: 100vh;
             display: flex;
             flex-direction: column;
             align-items: center;
+            justify-content: space-between;
+            position: relative;
             overflow-x: hidden;
         }
 
-        /* Animated gradient background */
-        .bg-gradient {
+        /* Decorative Transportation & GPS Background Graphics */
+        .bg-decorations {
             position: fixed;
-            top: 0; left: 0; right: 0;
-            height: 340px;
-            background: linear-gradient(135deg, #004d27 0%, #006837 40%, #0b6d3b 70%, #004d27 100%);
-            background-size: 300% 300%;
-            animation: gradientShift 8s ease infinite;
+            inset: 0;
+            pointer-events: none;
             z-index: 0;
+            overflow: hidden;
         }
-        .bg-gradient::after {
-            content: '';
+        .bg-grid-lines {
             position: absolute;
-            bottom: -2px; left: 0; right: 0;
-            height: 80px;
-            background: linear-gradient(to top, var(--surface), transparent);
+            inset: 0;
+            background-image: 
+                radial-gradient(circle at 15% 20%, rgba(37, 99, 235, 0.04) 0%, transparent 40%),
+                radial-gradient(circle at 85% 60%, rgba(22, 163, 74, 0.04) 0%, transparent 40%),
+                linear-gradient(to right, rgba(226, 232, 240, 0.4) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(226, 232, 240, 0.4) 1px, transparent 1px);
+            background-size: 100% 100%, 100% 100%, 48px 48px, 48px 48px;
+            opacity: 0.6;
+        }
+        .bg-route-svg {
+            position: absolute;
+            top: 5%;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0.35;
         }
 
-        @keyframes gradientShift {
-            0%, 100% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-        }
-
-        /* Header */
-        .login-header {
+        /* Main Container */
+        .container {
             position: relative;
-            z-index: 2;
-            text-align: center;
-            padding: 48px 24px 20px;
-            color: white;
-        }
-        .login-header .logo-icon {
-            width: 64px; height: 64px;
-            background: rgba(255,255,255,0.15);
-            border-radius: 16px;
-            display: flex; align-items: center; justify-content: center;
-            margin: 0 auto 16px;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255,255,255,0.2);
-        }
-        .login-header h1 {
-            font-family: 'Plus Jakarta Sans', sans-serif;
-            font-size: 28px;
-            font-weight: 800;
-            line-height: 1.2;
-            margin-bottom: 8px;
-        }
-        .login-header p {
-            font-size: 14px;
-            opacity: 0.85;
-            max-width: 360px;
-            margin: 0 auto;
-            line-height: 1.5;
+            z-index: 1;
+            width: 100%;
+            max-width: 1200px;
+            padding: 40px 24px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            flex: 1;
         }
 
-        /* Live badge */
-        .live-badge {
+        /* Top Header */
+        .brand-header {
+            text-align: center;
+            max-width: 780px;
+            margin-bottom: 36px;
+        }
+
+        .brand-logo-badge {
+            width: 68px;
+            height: 68px;
+            border-radius: 18px;
+            background: linear-gradient(135deg, #1E40AF 0%, #2563EB 50%, #3B82F6 100%);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 10px 25px -3px rgba(37, 99, 235, 0.35);
+            margin-bottom: 20px;
+            position: relative;
+        }
+        .brand-logo-badge .material-symbols-outlined {
+            color: #FFFFFF;
+            font-size: 36px;
+        }
+
+        .system-pill {
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            padding: 4px 12px;
-            background: rgba(255,255,255,0.15);
+            padding: 4px 14px;
             border-radius: 9999px;
-            font-size: 11px;
+            background: rgba(37, 99, 235, 0.08);
+            border: 1px solid rgba(37, 99, 235, 0.2);
+            color: #1E40AF;
+            font-size: 12px;
             font-weight: 700;
             letter-spacing: 0.04em;
             text-transform: uppercase;
-            margin-bottom: 16px;
-            backdrop-filter: blur(8px);
+            margin-bottom: 12px;
         }
-        .live-dot {
-            width: 8px; height: 8px;
-            background: #9ef6b6;
+        .system-pill .pulse-dot {
+            width: 7px;
+            height: 7px;
             border-radius: 50%;
-            animation: pulse 1.5s infinite;
+            background: #2563EB;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
+            animation: pulseGps 2s infinite;
         }
-        @keyframes pulse {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.5; transform: scale(1.3); }
-        }
-
-        /* Cards container */
-        .cards-container {
-            position: relative;
-            z-index: 2;
-            width: 100%;
-            max-width: 480px;
-            padding: 0 16px 40px;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
+        @keyframes pulseGps {
+            0% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.6); }
+            70% { box-shadow: 0 0 0 8px rgba(37, 99, 235, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
         }
 
-        .section-label {
+        .brand-title {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 38px;
+            font-weight: 800;
+            color: #0F172A;
+            line-height: 1.15;
+            letter-spacing: -0.02em;
+            margin-bottom: 8px;
+        }
+
+        .brand-subtitle {
             font-family: 'Plus Jakarta Sans', sans-serif;
             font-size: 18px;
             font-weight: 700;
-            color: var(--on-surface);
-            margin-bottom: 4px;
-            padding-left: 4px;
+            color: #2563EB;
+            margin-bottom: 10px;
         }
 
-        /* Role Card */
+        .brand-tagline {
+            font-size: 15px;
+            color: var(--text-muted);
+            line-height: 1.5;
+            max-width: 580px;
+            margin: 0 auto;
+        }
+
+        /* Section Heading */
+        .section-prompt {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 20px;
+            font-weight: 700;
+            color: #1E293B;
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Role Selection Cards Grid */
+        .cards-grid {
+            width: 100%;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin-bottom: 40px;
+            transition: opacity 0.25s ease, transform 0.25s ease;
+        }
+
         .role-card {
-            background: #ffffff;
-            border: 1px solid #e2e8f0;
+            background: var(--surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: 20px;
+            padding: 28px 22px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            box-shadow: var(--shadow-card);
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+            position: relative;
+            overflow: hidden;
+            min-height: 310px;
+        }
+        .role-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: transparent;
+            transition: background 0.2s ease;
+        }
+        .role-card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-hover);
+            border-color: var(--border-hover);
+        }
+
+        /* Card Header */
+        .card-icon-badge {
+            width: 54px;
+            height: 54px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+            transition: transform 0.2s ease;
+        }
+        .role-card:hover .card-icon-badge {
+            transform: scale(1.06);
+        }
+        .card-icon-badge .material-symbols-outlined {
+            font-size: 28px;
+        }
+
+        .card-title {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 19px;
+            font-weight: 700;
+            color: var(--text-main);
+            margin-bottom: 8px;
+        }
+
+        .card-desc {
+            font-size: 13.5px;
+            color: var(--text-muted);
+            line-height: 1.5;
+            margin-bottom: 18px;
+            flex-grow: 1;
+        }
+
+        /* Note Badge */
+        .note-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 3px 8px;
+            border-radius: 6px;
+            width: fit-content;
+            margin-bottom: 14px;
+        }
+
+        /* Card Buttons */
+        .card-btn {
+            width: 100%;
+            height: 46px;
             border-radius: 12px;
-            padding: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
             cursor: pointer;
-            transition: all 0.2s ease;
+            text-decoration: none;
+            transition: all 0.18s ease;
+            border: 1.5px solid transparent;
+        }
+        .card-btn:active {
+            transform: scale(0.98);
+        }
+
+        /* Role 1: Passenger (Blue) */
+        .card-passenger::before { background: var(--role-passenger); }
+        .card-passenger .card-icon-badge {
+            background: var(--role-passenger-bg);
+            color: var(--role-passenger);
+            border: 1px solid var(--role-passenger-border);
+        }
+        .card-passenger:hover { border-color: var(--role-passenger); }
+        .card-passenger .note-tag {
+            background: var(--role-passenger-bg);
+            color: var(--role-passenger);
+            border: 1px solid var(--role-passenger-border);
+        }
+        .btn-passenger {
+            background: var(--role-passenger);
+            color: #FFFFFF;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+        }
+        .btn-passenger:hover {
+            background: #1D4ED8;
+            box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35);
+        }
+
+        /* Role 2: Driver (Green) */
+        .card-driver::before { background: var(--role-driver); }
+        .card-driver .card-icon-badge {
+            background: var(--role-driver-bg);
+            color: var(--role-driver);
+            border: 1px solid var(--role-driver-border);
+        }
+        .card-driver:hover { border-color: var(--role-driver); }
+        .btn-driver {
+            background: #FFFFFF;
+            color: var(--role-driver);
+            border-color: var(--role-driver);
+        }
+        .btn-driver:hover {
+            background: var(--role-driver);
+            color: #FFFFFF;
+            box-shadow: 0 4px 14px rgba(22, 163, 74, 0.25);
+        }
+
+        /* Role 3: Conductor (Purple) */
+        .card-conductor::before { background: var(--role-conductor); }
+        .card-conductor .card-icon-badge {
+            background: var(--role-conductor-bg);
+            color: var(--role-conductor);
+            border: 1px solid var(--role-conductor-border);
+        }
+        .card-conductor:hover { border-color: var(--role-conductor); }
+        .btn-conductor {
+            background: #FFFFFF;
+            color: var(--role-conductor);
+            border-color: var(--role-conductor);
+        }
+        .btn-conductor:hover {
+            background: var(--role-conductor);
+            color: #FFFFFF;
+            box-shadow: 0 4px 14px rgba(147, 51, 234, 0.25);
+        }
+
+        /* Role 4: Administrator (Orange) */
+        .card-admin::before { background: var(--role-admin); }
+        .card-admin .card-icon-badge {
+            background: var(--role-admin-bg);
+            color: var(--role-admin);
+            border: 1px solid var(--role-admin-border);
+        }
+        .card-admin:hover { border-color: var(--role-admin); }
+        .btn-admin {
+            background: #FFFFFF;
+            color: var(--role-admin);
+            border-color: var(--role-admin);
+        }
+        .btn-admin:hover {
+            background: var(--role-admin);
+            color: #FFFFFF;
+            box-shadow: 0 4px 14px rgba(234, 88, 12, 0.25);
+        }
+
+        /* ============================================================ */
+        /* EXPANDED GOOGLE LOGIN PANEL (Initially Hidden)              */
+        /* ============================================================ */
+        .login-panel-container {
+            display: none;
+            width: 100%;
+            max-width: 440px;
+            margin: 0 auto 40px;
+            animation: fadeInScale 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        @keyframes fadeInScale {
+            from { opacity: 0; transform: scale(0.97) translateY(8px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+
+        .login-panel-card {
+            background: var(--surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: 24px;
+            padding: 38px 32px 30px;
+            box-shadow: var(--shadow-hover);
+            text-align: center;
             position: relative;
             overflow: hidden;
         }
-        .role-card:hover {
-            border-color: var(--primary);
-            box-shadow: 0 4px 12px rgba(0, 77, 39, 0.1);
-            transform: translateY(-2px);
-        }
-        .role-card:active {
-            transform: translateY(0);
-            background: #f8fafc;
+        .login-panel-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 6px;
+            background: var(--panel-accent, #2563EB);
         }
 
-        .role-card .card-top {
+        .panel-role-badge {
+            width: 64px;
+            height: 64px;
+            border-radius: 18px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 16px;
+            background: var(--panel-accent-bg, #EFF6FF);
+            color: var(--panel-accent, #2563EB);
+            border: 1px solid var(--panel-accent-border, #BFDBFE);
+        }
+        .panel-role-badge .material-symbols-outlined {
+            font-size: 32px;
+        }
+
+        .panel-welcome {
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--panel-accent, #2563EB);
+            margin-bottom: 6px;
+        }
+
+        .panel-title {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 26px;
+            font-weight: 800;
+            color: var(--text-main);
+            margin-bottom: 10px;
+        }
+
+        .panel-desc {
+            font-size: 14px;
+            color: var(--text-muted);
+            line-height: 1.5;
+            margin-bottom: 28px;
+            max-width: 340px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        /* Google Continue Button */
+        .google-auth-btn {
+            width: 100%;
+            height: 50px;
+            background: #FFFFFF;
+            border: 1.5px solid #CBD5E1;
+            border-radius: 12px;
             display: flex;
             align-items: center;
-            gap: 14px;
-            margin-bottom: 12px;
+            justify-content: center;
+            gap: 12px;
+            font-size: 15px;
+            font-weight: 600;
+            color: #1E293B;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+            margin-bottom: 20px;
+        }
+        .google-auth-btn:hover {
+            border-color: #94A3B8;
+            background: #F8FAFC;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            transform: translateY(-1px);
+        }
+        .google-auth-btn:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+        .google-icon-svg {
+            width: 22px;
+            height: 22px;
+            flex-shrink: 0;
         }
 
-        .role-icon {
-            width: 48px; height: 48px;
-            border-radius: 12px;
+        /* Back to Role Selection */
+        .back-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13.5px;
+            font-weight: 600;
+            color: var(--text-muted);
+            background: none;
+            border: none;
+            cursor: pointer;
+            transition: color 0.15s ease;
+            padding: 6px 12px;
+            border-radius: 8px;
+        }
+        .back-btn:hover {
+            color: var(--text-main);
+            background: #F1F5F9;
+        }
+
+        /* Error Alert Box */
+        .error-alert {
+            display: none;
+            background: #FEF2F2;
+            border: 1px solid #FCA5A5;
+            border-radius: 10px;
+            padding: 12px 14px;
+            color: #991B1B;
+            font-size: 13px;
+            font-weight: 500;
+            margin-bottom: 18px;
+            text-align: left;
+            line-height: 1.4;
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+        }
+        .error-alert.hidden { display: none !important; }
+        .error-alert .material-symbols-outlined {
+            color: #DC2626;
+            font-size: 18px;
+            margin-top: 1px;
+            flex-shrink: 0;
+        }
+
+        /* Loading Spinner */
+        .spinner {
+            width: 18px;
+            height: 18px;
+            border: 2.5px solid #E2E8F0;
+            border-top-color: var(--panel-accent, #2563EB);
+            border-radius: 50%;
+            animation: spin 0.75s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ============================================================ */
+        /* BOTTOM FEATURES STRIP                                        */
+        /* ============================================================ */
+        .features-strip {
+            width: 100%;
+            max-width: 1100px;
+            border-top: 1px solid var(--border-subtle);
+            padding: 28px 0 20px;
+            margin-top: auto;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+        }
+
+        .feature-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+        .feature-icon-box {
+            width: 38px;
+            height: 38px;
+            border-radius: 10px;
+            background: #EFF6FF;
+            color: #2563EB;
             display: flex;
             align-items: center;
             justify-content: center;
             flex-shrink: 0;
         }
-        .role-icon .material-symbols-outlined {
-            font-size: 24px;
-            color: white;
+        .feature-icon-box .material-symbols-outlined {
+            font-size: 20px;
         }
 
-        .role-card .card-info h3 {
+        .feature-text h4 {
             font-family: 'Plus Jakarta Sans', sans-serif;
-            font-size: 16px;
+            font-size: 14px;
             font-weight: 700;
+            color: var(--text-main);
             margin-bottom: 2px;
         }
-        .role-card .card-info p {
-            font-size: 13px;
-            color: var(--on-surface-variant);
+        .feature-text p {
+            font-size: 12px;
+            color: var(--text-muted);
             line-height: 1.4;
         }
 
-        .role-card .card-action {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            padding: 12px;
-            background: var(--surface-container-low);
-            border-radius: 8px;
-            border: 1.5px solid var(--outline-variant);
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--on-surface);
-            transition: all 0.15s ease;
-        }
-        .role-card:hover .card-action {
-            background: var(--surface-container);
-            border-color: var(--primary);
-            color: var(--primary);
-        }
-        .role-card .card-action img {
-            width: 20px; height: 20px;
-        }
-
-        /* Role-specific icon colors */
-        .role-user .role-icon { background: var(--primary-container); }
-        .role-conductor .role-icon { background: var(--tertiary-container); }
-        .role-driver .role-icon { background: #1e40af; }
-        .role-admin .role-icon { background: var(--secondary); }
-
-        /* Google button styling within card */
-        .g-signin-btn {
-            display: none;
-            margin-top: 12px;
-        }
-
-        /* Loading overlay */
-        .loading-overlay {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.5);
-            backdrop-filter: blur(4px);
-            z-index: 100;
-            align-items: center;
-            justify-content: center;
-        }
-        .loading-overlay.active { display: flex; }
-        .loading-box {
-            background: white;
-            border-radius: 16px;
-            padding: 32px;
+        /* Footer Copyright */
+        .app-footer {
+            width: 100%;
             text-align: center;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.15);
-        }
-        .loading-box .spinner {
-            width: 40px; height: 40px;
-            border: 4px solid #e2e8f0;
-            border-top-color: var(--primary);
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-            margin: 0 auto 16px;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
-
-        /* Error toast */
-        .error-toast {
-            display: none;
-            position: fixed;
-            bottom: 24px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: var(--error);
-            color: white;
-            padding: 12px 24px;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 600;
-            z-index: 200;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-        }
-        .error-toast.active { display: block; }
-
-        /* Footer */
-        .login-footer {
-            position: relative;
-            z-index: 2;
-            text-align: center;
-            padding: 0 16px 24px;
             font-size: 12px;
-            color: var(--on-surface-variant);
-            line-height: 1.6;
+            color: #94A3B8;
+            padding: 12px 24px 20px;
         }
-        .login-footer a {
-            color: var(--primary);
-            text-decoration: none;
-            font-weight: 600;
+
+        /* Responsive Breakpoints */
+        @media (max-width: 1024px) {
+            .cards-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .features-strip {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 20px;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .brand-title {
+                font-size: 28px;
+            }
+            .brand-subtitle {
+                font-size: 16px;
+            }
+            .cards-grid {
+                grid-template-columns: 1fr;
+                gap: 16px;
+            }
+            .features-strip {
+                grid-template-columns: 1fr;
+                gap: 16px;
+            }
+            .container {
+                padding: 24px 16px 16px;
+            }
+            .login-panel-card {
+                padding: 28px 20px 22px;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="bg-gradient"></div>
 
-    <header class="login-header">
-        <div class="live-badge">
-            <span class="live-dot"></span>
-            Live Transit System
-        </div>
-        <div class="logo-icon">
-            <span class="material-symbols-outlined" style="font-size:32px;">directions_bus</span>
-        </div>
-        <h1>Smart Public Transport</h1>
-        <p>Real-time bus tracking for APSRTC & TGSRTC networks across Andhra Pradesh & Telangana</p>
-    </header>
-
-    <div class="cards-container">
-        <div class="section-label">Sign in as</div>
-
-        <!-- Passenger / User -->
-        <div class="role-card role-user" onclick="initiateGoogleLogin('passenger')">
-            <div class="card-top">
-                <div class="role-icon">
-                    <span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1;">person</span>
-                </div>
-                <div class="card-info">
-                    <h3>Passenger</h3>
-                    <p>Track buses in real-time, view routes & stop progress, report issues</p>
-                </div>
-            </div>
-            <div class="card-action">
-                <svg viewBox="0 0 24 24" width="20" height="20"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
-                Sign in with Google
-            </div>
-        </div>
-
-        <!-- Driver -->
-        <div class="role-card role-driver" onclick="initiateGoogleLogin('driver')">
-            <div class="card-top">
-                <div class="role-icon">
-                    <span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1;">local_shipping</span>
-                </div>
-                <div class="card-info">
-                    <h3>Driver</h3>
-                    <p>Start trips, stream live GPS location, manage your active routes</p>
-                </div>
-            </div>
-            <div class="card-action">
-                <svg viewBox="0 0 24 24" width="20" height="20"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
-                Sign in with Google
-            </div>
-        </div>
-
-        <!-- Conductor -->
-        <div class="role-card role-conductor" onclick="initiateGoogleLogin('conductor')">
-            <div class="card-top">
-                <div class="role-icon">
-                    <span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1;">badge</span>
-                </div>
-                <div class="card-info">
-                    <h3>Conductor</h3>
-                    <p>Join active trips, monitor GPS feed, announce stops & manage delays</p>
-                </div>
-            </div>
-            <div class="card-action">
-                <svg viewBox="0 0 24 24" width="20" height="20"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
-                Sign in with Google
-            </div>
-        </div>
-
-        <!-- Admin -->
-        <div class="role-card role-admin" onclick="initiateGoogleLogin('admin')">
-            <div class="card-top">
-                <div class="role-icon">
-                    <span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1;">admin_panel_settings</span>
-                </div>
-                <div class="card-info">
-                    <h3>Administrator</h3>
-                    <p>Fleet management, analytics, route configuration & system control</p>
-                </div>
-            </div>
-            <div class="card-action">
-                <svg viewBox="0 0 24 24" width="20" height="20"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
-                Sign in with Google
-            </div>
-        </div>
+    <!-- Background Route & Grid Visuals -->
+    <div class="bg-decorations">
+        <div class="bg-grid-lines"></div>
+        <svg class="bg-route-svg" viewBox="0 0 1400 800" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <!-- Subtle dashed transit lines -->
+            <path d="M-50,220 C300,180 450,380 750,260 C1050,140 1200,450 1450,320" stroke="#3B82F6" stroke-width="2" stroke-dasharray="8 8" opacity="0.25"/>
+            <path d="M-50,520 C250,420 500,600 800,480 C1100,360 1250,550 1450,460" stroke="#16A34A" stroke-width="2" stroke-dasharray="8 8" opacity="0.2"/>
+            <!-- Subtle route nodes -->
+            <circle cx="450" cy="380" r="4" fill="#3B82F6" opacity="0.4"/>
+            <circle cx="750" cy="260" r="4" fill="#3B82F6" opacity="0.4"/>
+            <circle cx="800" cy="480" r="4" fill="#16A34A" opacity="0.4"/>
+        </svg>
     </div>
 
-    <footer class="login-footer">
-        Smart Public Transport Tracking System<br>
-        Community Initiative — <a href="#">APSRTC</a> & <a href="#">TGSRTC</a> Networks
+    <!-- Main Container -->
+    <div class="container">
+
+        <!-- Top Header -->
+        <header class="brand-header">
+            <div class="brand-logo-badge">
+                <span class="material-symbols-outlined">directions_bus</span>
+            </div>
+            <div class="system-pill">
+                <span class="pulse-dot"></span>
+                Real-Time Transit Network
+            </div>
+            <h1 class="brand-title">Smart Public Transport</h1>
+            <h2 class="brand-subtitle">Real-Time Bus Tracking & Management System</h2>
+            <p class="brand-tagline">Track buses, manage routes, and experience smarter public transportation across Andhra Pradesh & Telangana.</p>
+        </header>
+
+        <!-- Section Prompt (Shown in Role Selection View) -->
+        <div class="section-prompt" id="section-prompt">
+            <span>Who are you?</span>
+        </div>
+
+        <!-- 1. Four Role Cards Grid -->
+        <div class="cards-grid" id="cards-grid">
+
+            <!-- Card 1: Passenger / User -->
+            <div class="role-card card-passenger">
+                <div>
+                    <div class="card-icon-badge">
+                        <span class="material-symbols-outlined">person</span>
+                    </div>
+                    <h3 class="card-title">Passenger / User</h3>
+                    <p class="card-desc">Track buses, view routes, stops and estimated arrival times.</p>
+                    <span class="note-tag">
+                        <span class="material-symbols-outlined" style="font-size:13px;">check_circle</span>
+                        No login required
+                    </span>
+                </div>
+                <!-- Navigates immediately to /user/dashboard without login -->
+                <a href="/user/dashboard" class="card-btn btn-passenger">
+                    Continue as User &rarr;
+                </a>
+            </div>
+
+            <!-- Card 2: Driver -->
+            <div class="role-card card-driver">
+                <div>
+                    <div class="card-icon-badge">
+                        <span class="material-symbols-outlined">sports_motorsports</span>
+                    </div>
+                    <h3 class="card-title">Driver</h3>
+                    <p class="card-desc">Access assigned bus, route and trip information.</p>
+                </div>
+                <button type="button" class="card-btn btn-driver" onclick="openLoginPanel('driver')">
+                    Driver Login &rarr;
+                </button>
+            </div>
+
+            <!-- Card 3: Conductor -->
+            <div class="role-card card-conductor">
+                <div>
+                    <div class="card-icon-badge">
+                        <span class="material-symbols-outlined">confirmation_number</span>
+                    </div>
+                    <h3 class="card-title">Conductor</h3>
+                    <p class="card-desc">Manage passenger trips, assigned bus and route information.</p>
+                </div>
+                <button type="button" class="card-btn btn-conductor" onclick="openLoginPanel('conductor')">
+                    Conductor Login &rarr;
+                </button>
+            </div>
+
+            <!-- Card 4: Administrator -->
+            <div class="role-card card-admin">
+                <div>
+                    <div class="card-icon-badge">
+                        <span class="material-symbols-outlined">shield</span>
+                    </div>
+                    <h3 class="card-title">Administrator</h3>
+                    <p class="card-desc">Manage buses, drivers, conductors, routes and system operations.</p>
+                </div>
+                <button type="button" class="card-btn btn-admin" onclick="openLoginPanel('admin')">
+                    Administrator Login &rarr;
+                </button>
+            </div>
+
+        </div>
+
+        <!-- 2. Single Google Login Panel (Initially Hidden, Expands upon role selection) -->
+        <div class="login-panel-container" id="login-panel-container">
+            <div class="login-panel-card" id="login-panel-card">
+
+                <!-- Dynamic Role Badge Icon -->
+                <div class="panel-role-badge" id="panel-role-badge">
+                    <span class="material-symbols-outlined" id="panel-icon">sports_motorsports</span>
+                </div>
+
+                <div class="panel-welcome">Welcome Back!</div>
+                <h3 class="panel-title" id="panel-title">Driver Login</h3>
+                <p class="panel-desc" id="panel-desc">Sign in with your authorized Google account to access your driver dashboard.</p>
+
+                <!-- Error Alert Box -->
+                <div class="error-alert hidden" id="login-error-alert">
+                    <span class="material-symbols-outlined">error</span>
+                    <span id="login-error-text">Authentication failed.</span>
+                </div>
+
+                <!-- Google OAuth Button -->
+                <button type="button" class="google-auth-btn" id="google-auth-btn" onclick="triggerGoogleSignIn()">
+                    <svg class="google-icon-svg" viewBox="0 0 24 24">
+                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
+                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                    </svg>
+                    <span id="google-btn-label">Continue with Google</span>
+                </button>
+
+                <!-- Back to Role Selection Button -->
+                <button type="button" class="back-btn" onclick="closeLoginPanel()">
+                    &larr; Back to role selection
+                </button>
+
+            </div>
+        </div>
+
+        <!-- 3. Bottom Features Strip -->
+        <div class="features-strip">
+            <div class="feature-item">
+                <div class="feature-icon-box">
+                    <span class="material-symbols-outlined">location_on</span>
+                </div>
+                <div class="feature-text">
+                    <h4>Live Tracking</h4>
+                    <p>Real-time bus location tracking</p>
+                </div>
+            </div>
+
+            <div class="feature-item">
+                <div class="feature-icon-box" style="background:#F0FDF4;color:#16A34A;">
+                    <span class="material-symbols-outlined">alt_route</span>
+                </div>
+                <div class="feature-text">
+                    <h4>Smart Routes</h4>
+                    <p>Optimized routes for better commuting</p>
+                </div>
+            </div>
+
+            <div class="feature-item">
+                <div class="feature-icon-box" style="background:#FAF5FF;color:#9333EA;">
+                    <span class="material-symbols-outlined">update</span>
+                </div>
+                <div class="feature-text">
+                    <h4>Live Updates</h4>
+                    <p>Real-time arrival and service updates</p>
+                </div>
+            </div>
+
+            <div class="feature-item">
+                <div class="feature-icon-box" style="background:#FFF7ED;color:#EA580C;">
+                    <span class="material-symbols-outlined">verified_user</span>
+                </div>
+                <div class="feature-text">
+                    <h4>Secure System</h4>
+                    <p>Role-based secure access control</p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+        Smart Public Transport Bus Tracking System &bull; Community Transit Initiative
     </footer>
 
-    <!-- Loading Overlay -->
-    <div class="loading-overlay" id="loading-overlay">
-        <div class="loading-box">
-            <div class="spinner"></div>
-            <p style="font-weight:600; color: var(--on-surface);">Signing you in...</p>
-            <p style="font-size:13px; color: var(--on-surface-variant); margin-top:4px;">Verifying your Google account</p>
-        </div>
-    </div>
-
-    <!-- Error Toast -->
-    <div class="error-toast" id="error-toast"></div>
-
+    <!-- Client-Side Supabase Auth & Role Navigation Logic -->
     <script>
-        const GOOGLE_CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID';
-        let selectedRole = null;
-        let googleClient = null;
-
-        function initiateGoogleLogin(role) {
-            selectedRole = role;
-
-            // Use Google Identity Services (One-Tap or Popup)
-            if (!googleClient) {
-                googleClient = google.accounts.oauth2.initTokenClient({
-                    client_id: GOOGLE_CLIENT_ID,
-                    scope: 'email profile',
-                    callback: handleGoogleResponse,
-                });
-            }
-
-            // If Google Client ID is placeholder, use demo mode
-            if (GOOGLE_CLIENT_ID === 'YOUR_GOOGLE_CLIENT_ID') {
-                // Demo mode — bypass Google, send directly to backend
-                showLoading();
-                fetch('/auth/google', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        role: role,
-                        demo_mode: true
-                    })
-                })
-                .then(r => r.json())
-                .then(data => {
-                    hideLoading();
-                    if (data.success) {
-                        window.location.href = data.redirect;
-                    } else {
-                        showError(data.error || 'Login failed');
-                    }
-                })
-                .catch(err => {
-                    hideLoading();
-                    showError('Connection error. Please try again.');
-                });
-                return;
-            }
-
-            googleClient.requestAccessToken();
+        // Supabase Client Initialization
+        const SUPABASE_URL = "{{ supabase_url }}";
+        const SUPABASE_ANON_KEY = "{{ supabase_anon_key }}";
+        
+        let supabase = null;
+        if (window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY) {
+            supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         }
 
-        function handleGoogleResponse(response) {
-            if (response.error) {
-                showError('Google sign-in cancelled.');
-                return;
+        // Configuration for each role
+        const ROLE_CONFIGS = {
+            driver: {
+                title: 'Driver Login',
+                subtitle: 'Driver',
+                desc: 'Sign in with your authorized Google account to access your driver dashboard.',
+                icon: 'sports_motorsports',
+                accent: '#16A34A',
+                accentBg: '#F0FDF4',
+                accentBorder: '#BBF7D0'
+            },
+            conductor: {
+                title: 'Conductor Login',
+                subtitle: 'Conductor',
+                desc: 'Sign in with your authorized Google account to access your conductor dashboard.',
+                icon: 'confirmation_number',
+                accent: '#9333EA',
+                accentBg: '#FAF5FF',
+                accentBorder: '#E9D5FF'
+            },
+            admin: {
+                title: 'Administrator Login',
+                subtitle: 'Administrator',
+                desc: 'Sign in with your authorized Google account to access the administration dashboard.',
+                icon: 'shield',
+                accent: '#EA580C',
+                accentBg: '#FFF7ED',
+                accentBorder: '#FED7AA'
+            }
+        };
+
+        let selectedRole = null;
+
+        // Open Login Panel for specific role
+        function openLoginPanel(role) {
+            selectedRole = role;
+            const config = ROLE_CONFIGS[role];
+            if (!config) return;
+
+            // Hide 4 cards & section title
+            document.getElementById('cards-grid').style.display = 'none';
+            document.getElementById('section-prompt').style.display = 'none';
+
+            // Configure panel card styling & labels
+            const card = document.getElementById('login-panel-card');
+            card.style.setProperty('--panel-accent', config.accent);
+            card.style.setProperty('--panel-accent-bg', config.accentBg);
+            card.style.setProperty('--panel-accent-border', config.accentBorder);
+
+            document.getElementById('panel-icon').textContent = config.icon;
+            document.getElementById('panel-title').textContent = config.title;
+            document.getElementById('panel-desc').textContent = config.desc;
+
+            // Reset errors and button state
+            hideError();
+            resetGoogleButton();
+
+            // Display panel
+            document.getElementById('login-panel-container').style.display = 'block';
+        }
+
+        // Close Login Panel and return to 4 role cards
+        function closeLoginPanel() {
+            selectedRole = null;
+            document.getElementById('login-panel-container').style.display = 'none';
+            document.getElementById('cards-grid').style.display = 'grid';
+            document.getElementById('section-prompt').style.display = 'flex';
+            hideError();
+        }
+
+        // Trigger Google OAuth via Supabase
+        async function triggerGoogleSignIn() {
+            if (!selectedRole) return;
+
+            hideError();
+            setButtonLoading(true);
+
+            // Save the intended role in sessionStorage so auth_callback can verify it
+            sessionStorage.setItem('intended_role', selectedRole);
+
+            // If Supabase is initialized, trigger OAuth redirect
+            if (supabase) {
+                try {
+                    const { data, error } = await supabase.auth.signInWithOAuth({
+                        provider: 'google',
+                        options: {
+                            redirectTo: `${window.location.origin}/auth/callback`
+                        }
+                    });
+
+                    if (error) {
+                        showError('Google sign-in failed. Please try again.');
+                        setButtonLoading(false);
+                    }
+                    // Browser will now redirect to Google
+                    return;
+                } catch (err) {
+                    console.error('Supabase OAuth error:', err);
+                }
             }
 
-            showLoading();
-
-            // Exchange access_token for user info, then send to our backend
-            fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-                headers: { 'Authorization': 'Bearer ' + response.access_token }
+            // Fallback: If Supabase OAuth is not active yet in development, authenticate through backend
+            fetch('/auth/google', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    role: selectedRole,
+                    demo_mode: true
+                })
             })
-            .then(r => r.json())
-            .then(userInfo => {
-                return fetch('/auth/google', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        role: selectedRole,
-                        email: userInfo.email,
-                        name: userInfo.name,
-                        picture: userInfo.picture,
-                        access_token: response.access_token
-                    })
-                });
-            })
-            .then(r => r.json())
-            .then(data => {
-                hideLoading();
-                if (data.success) {
-                    window.location.href = data.redirect;
+            .then(res => res.json())
+            .then(result => {
+                setButtonLoading(false);
+                if (result.success && result.redirect) {
+                    window.location.href = result.redirect;
                 } else {
-                    showError(data.error || 'Login failed. Check your role access.');
+                    showError(result.error || 'This Google account is not authorized for ' + capitalize(selectedRole) + ' access.');
                 }
             })
             .catch(err => {
-                hideLoading();
-                showError('Authentication failed. Please try again.');
+                setButtonLoading(false);
+                showError('Google sign-in failed. Please try again.');
             });
         }
 
-        function showLoading() {
-            document.getElementById('loading-overlay').classList.add('active');
+        function setButtonLoading(isLoading) {
+            const btn = document.getElementById('google-auth-btn');
+            const label = document.getElementById('google-btn-label');
+            if (isLoading) {
+                btn.disabled = true;
+                btn.innerHTML = `<span class="spinner"></span> <span>Signing in with Google...</span>`;
+            } else {
+                resetGoogleButton();
+            }
         }
-        function hideLoading() {
-            document.getElementById('loading-overlay').classList.remove('active');
+
+        function resetGoogleButton() {
+            const btn = document.getElementById('google-auth-btn');
+            btn.disabled = false;
+            btn.innerHTML = `
+                <svg class="google-icon-svg" viewBox="0 0 24 24">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                </svg>
+                <span id="google-btn-label">Continue with Google</span>
+            `;
         }
-        function showError(msg) {
-            const toast = document.getElementById('error-toast');
-            toast.textContent = msg;
-            toast.classList.add('active');
-            setTimeout(() => toast.classList.remove('active'), 4000);
+
+        function showError(message) {
+            const alertBox = document.getElementById('login-error-alert');
+            const alertText = document.getElementById('login-error-text');
+            alertText.textContent = message;
+            alertBox.classList.remove('hidden');
         }
+
+        function hideError() {
+            const alertBox = document.getElementById('login-error-alert');
+            alertBox.classList.add('hidden');
+        }
+
+        function capitalize(str) {
+            if (!str) return '';
+            return str.charAt(0).toUpperCase() + str.slice(1);
+        }
+
+        // If URL has an error param from callback (e.g. ?error=unauthorized&role=driver)
+        window.addEventListener('DOMContentLoaded', () => {
+            const params = new URLSearchParams(window.location.search);
+            const role = params.get('role');
+            const errorType = params.get('error');
+
+            if (role && ROLE_CONFIGS[role]) {
+                openLoginPanel(role);
+                if (errorType === 'unregistered') {
+                    showError('Your Google account is not registered in the Smart Public Transport system. Please contact the administrator.');
+                } else if (errorType === 'unauthorized') {
+                    const roleName = role === 'admin' ? 'Administrator' : capitalize(role);
+                    showError('This Google account is not authorized for ' + roleName + ' access.');
+                } else if (errorType === 'failed') {
+                    showError('Google sign-in failed. Please try again.');
+                }
+            }
+        });
     </script>
 </body>
 </html>

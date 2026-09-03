@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Authenticating — Smart Public Transport</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(180deg, #F0F7FF 0%, #FFFFFF 50%, #F8FAFC 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #0F172A;
+            padding: 24px;
+        }
+        .auth-card {
+            background: #FFFFFF;
+            border: 1px solid #E2E8F0;
+            border-radius: 24px;
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+            padding: 40px 32px;
+            text-align: center;
+            max-width: 420px;
+            width: 100%;
+        }
+        .spinner {
+            width: 44px;
+            height: 44px;
+            border: 3.5px solid #E2E8F0;
+            border-top-color: #2563EB;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 20px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        h3 {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        p {
+            font-size: 14px;
+            color: #64748B;
+            line-height: 1.5;
+        }
+        .error-msg {
+            display: none;
+            background: #FEF2F2;
+            border: 1px solid #FCA5A5;
+            border-radius: 12px;
+            padding: 14px;
+            color: #991B1B;
+            font-size: 13.5px;
+            line-height: 1.4;
+            margin-top: 20px;
+            text-align: left;
+        }
+        .btn-back {
+            display: none;
+            margin-top: 20px;
+            width: 100%;
+            height: 44px;
+            background: #0F172A;
+            color: #FFFFFF;
+            border: none;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            align-items: center;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="auth-card">
+        <div class="spinner" id="spinner"></div>
+        <h3 id="auth-title">Verifying Google Account...</h3>
+        <p id="auth-status">Checking your authorized profile and role permissions.</p>
+        
+        <div class="error-msg" id="error-box"></div>
+        <a href="/login" class="btn-back" id="btn-back">&larr; Return to Role Selection</a>
+    </div>
+
+    <script>
+        const SUPABASE_URL = "{{ supabase_url }}";
+        const SUPABASE_ANON_KEY = "{{ supabase_anon_key }}";
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        const targetRole = sessionStorage.getItem('intended_role') || 'driver';
+
+        function showCallbackError(message, redirectUrl) {
+            document.getElementById('spinner').style.display = 'none';
+            document.getElementById('auth-title').textContent = 'Access Denied';
+            document.getElementById('auth-status').textContent = 'Role verification failed.';
+            
+            const errorBox = document.getElementById('error-box');
+            errorBox.textContent = message;
+            errorBox.style.display = 'block';
+
+            const backBtn = document.getElementById('btn-back');
+            if (redirectUrl) {
+                backBtn.href = redirectUrl;
+            }
+            backBtn.style.display = 'inline-flex';
+        }
+
+        async function handleAuthCallback() {
+            try {
+                // 1. Get current session from Supabase (handles PKCE code or hash automatically)
+                const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+                if (sessionError || !session || !session.user) {
+                    showCallbackError(
+                        'Google sign-in failed. Please try again.',
+                        `/login?role=${targetRole}&error=failed`
+                    );
+                    return;
+                }
+
+                const user = session.user;
+
+                // 2. Query the profiles table for this authenticated user
+                const { data: profile, error: profileError } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .eq('id', user.id)
+                    .maybeSingle();
+
+                // Check 1: Profile must exist
+                if (!profile) {
+                    showCallbackError(
+                        'Your Google account is not registered in the Smart Public Transport system. Please contact the administrator.',
+                        `/login?role=${targetRole}&error=unregistered`
+                    );
+                    return;
+                }
+
+                // Check 2: Role must strictly match the selected target role
+                const userRole = (profile.role || '').toLowerCase();
+                const expectedRole = (targetRole || '').toLowerCase();
+
+                if (userRole !== expectedRole) {
+                    const roleDisplayName = expectedRole === 'admin' ? 'Administrator' : expectedRole.charAt(0).toUpperCase() + expectedRole.slice(1);
+                    showCallbackError(
+                        `This Google account is not authorized for ${roleDisplayName} access.`,
+                        `/login?role=${targetRole}&error=unauthorized`
+                    );
+                    return;
+                }
+
+                // 3. Role verified! Create server-side session in Flask
+                const sessionRes = await fetch('/api/auth/set-session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: user.id,
+                        email: user.email,
+                        role: userRole,
+                        name: profile.full_name || user.email
+                    })
+                });
+
+                const sessionData = await sessionRes.json();
+
+                if (!sessionData.success) {
+                    showCallbackError(sessionData.error || 'Failed to initialize server session.', '/login');
+                    return;
+                }
+
+                // 4. Navigate directly to the authorized dashboard
+                const redirectMap = {
+                    'driver': '/driver/dashboard',
+                    'conductor': '/conductor/dashboard',
+                    'admin': '/admin/dashboard',
+                    'passenger': '/user/dashboard',
+                    'user': '/user/dashboard'
+                };
+
+                const dest = redirectMap[userRole] || '/user/dashboard';
+                window.location.href = dest;
+
+            } catch (err) {
+                console.error('Auth verification error:', err);
+                showCallbackError('An unexpected authentication error occurred.', '/login');
+            }
+        }
+
+        // Run when page loads
+        window.addEventListener('DOMContentLoaded', handleAuthCallback);
+    </script>
+</body>
+</html>
