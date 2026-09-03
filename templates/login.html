@@ -8,6 +8,9 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+    <!-- Firebase SDK (v10 Compat) for Real Google Authentication -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
     <!-- Supabase JS Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
@@ -974,45 +977,94 @@
             hideError();
         }
 
-        // Trigger Google OAuth via Supabase
+        // Firebase Client Initialization for Real Google Authentication
+        const firebaseConfig = {{ firebase_config | tojson }};
+        let firebaseAuth = null;
+        let googleProvider = null;
+
+        try {
+            if (window.firebase && firebaseConfig && firebaseConfig.apiKey) {
+                if (!firebase.apps.length) {
+                    firebase.initializeApp(firebaseConfig);
+                }
+                firebaseAuth = firebase.auth();
+                googleProvider = new firebase.auth.GoogleAuthProvider();
+                googleProvider.setCustomParameters({ prompt: 'select_account' });
+            }
+        } catch (fbErr) {
+            console.warn('Firebase initialization notice:', fbErr);
+        }
+
+        // Trigger Google OAuth (Firebase Real Google Auth with Supabase fallback)
         async function triggerGoogleSignIn() {
             if (!selectedRole) return;
 
             hideError();
             setButtonLoading(true);
 
-            // Save the intended role in sessionStorage so auth_callback can verify it
-            sessionStorage.setItem('intended_role', selectedRole);
-
-            // If Supabase is initialized, trigger OAuth redirect
-            if (supabase) {
+            // 1. Primary: Real Google Auth via Firebase
+            if (firebaseAuth && googleProvider) {
                 try {
-                    const { data, error } = await supabase.auth.signInWithOAuth({
-                        provider: 'google',
-                        options: {
-                            redirectTo: `${window.location.origin}/auth/callback`
-                        }
+                    const result = await firebaseAuth.signInWithPopup(googleProvider);
+                    const user = result.user;
+                    const idToken = await user.getIdToken();
+
+                    const res = await fetch('/auth/google', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            role: selectedRole,
+                            email: user.email,
+                            name: user.displayName || user.email,
+                            uid: user.uid,
+                            id_token: idToken,
+                            demo_mode: false
+                        })
                     });
 
-                    if (error) {
-                        console.error('Supabase OAuth error:', error);
-                        setButtonLoading(false);
-                        const msg = (error.message || '').toLowerCase();
-                        if (msg.includes('not enabled') || msg.includes('unsupported')) {
-                            showError('Google OAuth is not enabled in your Supabase project yet. Click "1-Click Test Login" below to test immediately, or enable Google in Supabase Dashboard → Authentication → Providers.');
-                        } else {
-                            showError('Google sign-in error: ' + (error.message || 'Please try again.'));
-                        }
-                        return;
+                    const data = await res.json();
+                    setButtonLoading(false);
+
+                    if (data.success && data.redirect) {
+                        window.location.href = data.redirect;
+                    } else {
+                        showError(data.error || `This Google account (${user.email}) is not authorized for ${capitalize(selectedRole)} access.`);
                     }
-                    // Browser will now redirect to Google
                     return;
                 } catch (err) {
-                    console.error('Supabase OAuth error:', err);
+                    setButtonLoading(false);
+                    console.error('Firebase Google Auth error:', err);
+
+                    if (err.code === 'auth/popup-closed-by-user') {
+                        return;
+                    } else if (err.code === 'auth/unauthorized-domain') {
+                        showError(`Domain "${window.location.hostname}" is not authorized in Firebase. Add it in Firebase Console → Authentication → Settings → Authorized Domains.`);
+                        return;
+                    } else if (err.code === 'auth/popup-blocked') {
+                        showError('Google sign-in popup was blocked by your browser. Please allow popups for this site.');
+                        return;
+                    } else {
+                        showError(err.message || 'Google sign-in failed. Please try again.');
+                        return;
+                    }
                 }
             }
 
-            // If Supabase OAuth is not active, run instant test login
+            // 2. Secondary: Supabase OAuth fallback
+            if (supabase) {
+                try {
+                    sessionStorage.setItem('intended_role', selectedRole);
+                    const { data, error } = await supabase.auth.signInWithOAuth({
+                        provider: 'google',
+                        options: { redirectTo: `${window.location.origin}/auth/callback` }
+                    });
+                    if (!error) return;
+                } catch (sbErr) {
+                    console.warn('Supabase OAuth notice:', sbErr);
+                }
+            }
+
+            // 3. Fallback: Demo test login
             triggerDemoSignIn();
         }
 

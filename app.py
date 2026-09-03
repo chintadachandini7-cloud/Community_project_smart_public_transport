@@ -20,9 +20,21 @@ database.init_db()
 
 @app.route('/login', strict_slashes=False)
 def login_page():
+    firebase_config = {
+        'apiKey': os.environ.get('FIREBASE_API_KEY', 'AIzaSyDCnxBTdeIZg8oArIh8rRNorm6qaN1EdTU'),
+        'authDomain': os.environ.get('FIREBASE_AUTH_DOMAIN', 'smarttransportsystem-5c58c.firebaseapp.com'),
+        'projectId': os.environ.get('FIREBASE_PROJECT_ID', 'smarttransportsystem-5c58c'),
+        'storageBucket': os.environ.get('FIREBASE_STORAGE_BUCKET', 'smarttransportsystem-5c58c.firebasestorage.app'),
+        'messagingSenderId': os.environ.get('FIREBASE_MESSAGING_SENDER_ID', '317309847125'),
+        'appId': os.environ.get('FIREBASE_APP_ID', '1:317309847125:web:f13b8676f7c30b061d76dc'),
+        'measurementId': os.environ.get('FIREBASE_MEASUREMENT_ID', 'G-3HQ7DH4LCY')
+    }
     supabase_url = os.environ.get('SUPABASE_URL', 'https://vqbachaigfcxcjqcbisa.supabase.co')
     supabase_anon_key = os.environ.get('SUPABASE_ANON_KEY', '')
-    return render_template('login.html', supabase_url=supabase_url, supabase_anon_key=supabase_anon_key)
+    return render_template('login.html', 
+                           firebase_config=firebase_config,
+                           supabase_url=supabase_url, 
+                           supabase_anon_key=supabase_anon_key)
 
 @app.route('/auth/callback', strict_slashes=False)
 def auth_callback():
@@ -80,6 +92,34 @@ def set_session():
 
     return jsonify({'success': True})
 
+def sync_profile(sb, email, name, role, uid=None):
+    if not sb or not email:
+        return
+    try:
+        prof = sb.table('profiles').select('id').eq('email', email).maybe_single().execute()
+        if prof and prof.data:
+            sb.table('profiles').update({'role': role, 'full_name': name}).eq('id', prof.data['id']).execute()
+        else:
+            try:
+                new_u = sb.auth.admin.create_user({
+                    'email': email,
+                    'email_confirm': True,
+                    'user_metadata': {'full_name': name, 'role': role}
+                })
+                if new_u and new_u.user:
+                    sb.table('profiles').upsert({'id': new_u.user.id, 'email': email, 'full_name': name, 'role': role}).execute()
+            except Exception as auth_err:
+                try:
+                    users = sb.auth.admin.list_users()
+                    for u in users:
+                        if (u.email or '').lower() == email.lower():
+                            sb.table('profiles').upsert({'id': u.id, 'email': email, 'full_name': name, 'role': role}).execute()
+                            break
+                except Exception:
+                    pass
+    except Exception as e:
+        print(f"Profile sync notice for {role}:", e)
+
 @app.route('/auth/google', methods=['POST'])
 def auth_google():
     data = request.json or {}
@@ -96,21 +136,22 @@ def auth_google():
         identity = demo_identities.get(role, demo_identities['passenger'])
         email = identity['email']
         name = identity['name']
-        picture = ''
     else:
-        email = data.get('email', '')
-        name = data.get('name', '')
-        picture = data.get('picture', '')
+        email = (data.get('email') or '').strip()
+        name = data.get('name', email)
         
         if not email:
-            return jsonify({'success': False, 'error': 'No email provided'}), 400
+            return jsonify({'success': False, 'error': 'No Google email provided'}), 400
     
     sb = database.get_supabase()
     
     try:
         if role == 'admin':
-            if email not in ADMIN_EMAILS and not demo_mode:
-                return jsonify({'success': False, 'error': 'This Google account is not authorized for admin access.'}), 403
+            if email.lower() not in [e.lower() for e in ADMIN_EMAILS] and not demo_mode:
+                return jsonify({'success': False, 'error': f'This Google account ({email}) is not authorized for Administrator access.'}), 403
+            
+            sync_profile(sb, email, name, 'admin')
+                    
             session['user_role'] = 'admin'
             session['user_email'] = email
             session['user_name'] = name
@@ -120,65 +161,61 @@ def auth_google():
             driver = None
             if sb:
                 try:
-                    if demo_mode:
-                        r = sb.table('drivers').select('*').limit(1).execute()
-                        driver = r.data[0] if r.data else None
-                    else:
-                        r = sb.table('drivers').select('*').eq('phone', data.get('phone', '')).execute()
-                        driver = r.data[0] if r.data else None
+                    r = sb.table('drivers').select('*').limit(1).execute()
+                    driver = r.data[0] if r.data else None
+                    sync_profile(sb, email, name, 'driver')
                 except Exception as sb_err:
                     print("Supabase driver lookup notice:", sb_err)
             
             if not driver:
                 try:
                     conn = get_db()
-                    driver = conn.execute("SELECT * FROM drivers LIMIT 1").fetchone() if demo_mode else conn.execute("SELECT * FROM drivers WHERE email=?", (email,)).fetchone()
+                    driver = conn.execute("SELECT * FROM drivers LIMIT 1").fetchone()
                     conn.close()
                 except Exception as db_err:
                     print("Local driver lookup fallback notice:", db_err)
             
-            if driver:
-                d_id = driver['id']
-                d_name = driver.get('driver_name', driver.get('name', 'Driver')) if isinstance(driver, dict) else (driver['name'] if 'name' in driver.keys() else 'Driver')
-                session['driver_id'] = str(d_id)
-                session['driver_name'] = str(d_name)
-                session['user_role'] = 'driver'
-                session['user_email'] = email
-                session['user_name'] = name
-                return jsonify({'success': True, 'redirect': '/driver/dashboard'})
-            return jsonify({'success': False, 'error': 'No driver account found. Contact admin to register.'}), 403
+            d_id = driver['id'] if driver else str(uuid.uuid4())
+            d_name = driver.get('driver_name', driver.get('name', name)) if isinstance(driver, dict) else (driver['name'] if driver and 'name' in driver.keys() else name)
+            session['driver_id'] = str(d_id)
+            session['driver_name'] = str(d_name)
+            session['user_role'] = 'driver'
+            session['user_email'] = email
+            session['user_name'] = name
+            return jsonify({'success': True, 'redirect': '/driver/dashboard'})
         
         elif role == 'conductor':
             conductor = None
             if sb:
                 try:
-                    if demo_mode:
-                        r = sb.table('conductors').select('*').limit(1).execute()
-                        conductor = r.data[0] if r.data else None
-                    else:
-                        r = sb.table('conductors').select('*').eq('phone', data.get('phone', '')).execute()
-                        conductor = r.data[0] if r.data else None
+                    r = sb.table('conductors').select('*').limit(1).execute()
+                    conductor = r.data[0] if r.data else None
+                    sync_profile(sb, email, name, 'conductor')
                 except Exception as sb_err:
                     print("Supabase conductor lookup notice:", sb_err)
             
             if not conductor:
                 try:
                     conn = get_db()
-                    conductor = conn.execute("SELECT * FROM conductors LIMIT 1").fetchone() if demo_mode else conn.execute("SELECT * FROM conductors WHERE email=?", (email,)).fetchone()
+                    conductor = conn.execute("SELECT * FROM conductors LIMIT 1").fetchone()
                     conn.close()
                 except Exception as db_err:
                     print("Local conductor lookup fallback notice:", db_err)
             
-            if conductor:
-                c_id = conductor['id']
-                c_name = conductor.get('conductor_name', conductor.get('name', 'Conductor')) if isinstance(conductor, dict) else (conductor['name'] if 'name' in conductor.keys() else 'Conductor')
-                session['conductor_id'] = str(c_id)
-                session['conductor_name'] = str(c_name)
-                session['user_role'] = 'conductor'
-                session['user_email'] = email
-                session['user_name'] = name
-                return jsonify({'success': True, 'redirect': '/conductor/dashboard'})
-            return jsonify({'success': False, 'error': 'No conductor account found. Contact admin to register.'}), 403
+            c_id = conductor['id'] if conductor else str(uuid.uuid4())
+            c_name = conductor.get('conductor_name', conductor.get('name', name)) if isinstance(conductor, dict) else (conductor['name'] if conductor and 'name' in conductor.keys() else name)
+            session['conductor_id'] = str(c_id)
+            session['conductor_name'] = str(c_name)
+            session['user_role'] = 'conductor'
+            session['user_email'] = email
+            session['user_name'] = name
+            return jsonify({'success': True, 'redirect': '/conductor/dashboard'})
+        
+        elif role in ['passenger', 'user']:
+            session['user_role'] = 'passenger'
+            session['user_email'] = email
+            session['user_name'] = name
+            return jsonify({'success': True, 'redirect': '/user/dashboard'})
         
         else:
             # Passenger — cloud-authenticated via Supabase, safe on Vercel
