@@ -896,9 +896,9 @@
         const SUPABASE_URL = "{{ supabase_url }}";
         const SUPABASE_ANON_KEY = "{{ supabase_anon_key }}";
         
-        let supabase = null;
+        let supabaseClient = null;
         if (window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY) {
-            supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         }
 
         // Configuration for each role
@@ -1051,10 +1051,10 @@
             }
 
             // 2. Secondary: Supabase OAuth fallback
-            if (supabase) {
+            if (supabaseClient) {
                 try {
                     sessionStorage.setItem('intended_role', selectedRole);
-                    const { data, error } = await supabase.auth.signInWithOAuth({
+                    const { data, error } = await supabaseClient.auth.signInWithOAuth({
                         provider: 'google',
                         options: { redirectTo: `${window.location.origin}/auth/callback` }
                     });
