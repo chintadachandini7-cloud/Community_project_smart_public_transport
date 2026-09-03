@@ -1,6 +1,7 @@
 import os
 import uuid
 import sqlite3
+from datetime import datetime
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 import database
 
@@ -701,27 +702,25 @@ def conductor_leave_trip():
     
     return jsonify({'success': True, 'message': 'Left trip successfully.'})
 
+@app.route('/api/driver/start-trip', methods=['POST'])
 def start_trip():
     if 'driver_id' not in session:
         return jsonify({'error': 'Unauthorized'}), 401
         
-    data = request.json
+    data = request.json or {}
     bus_id = data.get('bus_id')
     
     conn = get_db()
-    # Ensure bus exists and get route
     bus = conn.execute("SELECT route_id FROM buses WHERE id=?", (bus_id,)).fetchone()
     if not bus:
         conn.close()
         return jsonify({'error': 'Bus not found'}), 404
         
-    # Check if driver already has an active trip
     existing_driver_trip = conn.execute("SELECT id FROM trips WHERE driver_id=? AND status='Active'", (session['driver_id'],)).fetchone()
     if existing_driver_trip:
         conn.close()
         return jsonify({'error': 'You already have an active trip. Please end it first.'}), 400
         
-    # Check if bus already has an active trip
     existing_bus_trip = conn.execute("SELECT id FROM trips WHERE bus_id=? AND status='Active'", (bus_id,)).fetchone()
     if existing_bus_trip:
         conn.close()
@@ -742,13 +741,12 @@ def end_trip():
     if 'driver_id' not in session:
         return jsonify({'error': 'Unauthorized'}), 401
         
-    data = request.json
+    data = request.json or {}
     trip_id = data.get('trip_id')
     
     conn = get_db()
     conn.execute("UPDATE trips SET status='Completed', end_time=CURRENT_TIMESTAMP WHERE id=?", (trip_id,))
     
-    # Revert bus status
     trip = conn.execute("SELECT bus_id FROM trips WHERE id=?", (trip_id,)).fetchone()
     if trip:
         conn.execute("UPDATE buses SET gps_source='Simulated', status='Idle' WHERE id=?", (trip['bus_id'],))
@@ -757,35 +755,39 @@ def end_trip():
     conn.close()
     
     return jsonify({'message': 'Trip ended'})
+
+@app.route('/api/driver/location', methods=['POST'])
+def update_location():
+    if 'driver_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+        
+    data = request.json or {}
+    trip_id = data.get('trip_id')
+    bus_id = data.get('bus_id')
+    lat = data.get('latitude')
+    lon = data.get('longitude')
+    acc = data.get('accuracy')
+    speed = data.get('speed', 0)
     
-    if not all([trip_id, bus_id, lat, lon]):
+    if not all([trip_id, bus_id, lat is not None, lon is not None]):
         return jsonify({'error': 'Missing data'}), 400
+    
+    # 1. Update live locations in Supabase
+    sb = database.get_supabase()
+    if sb:
+        try:
+            sb.table('bus_locations').upsert({
+                'bus_id': str(bus_id),
+                'latitude': float(lat),
+                'longitude': float(lon),
+                'speed': float(speed or 0),
+                'updated_at': datetime.now().isoformat()
+            }).execute()
+        except Exception as sb_err:
+            print("Supabase bus_locations update notice:", sb_err)
         
     conn = get_db()
     # Log the location
-    conn.execute("INSERT INTO live_locations (trip_id, bus_id, latitude, longitude, accuracy) VALUES (?, ?, ?, ?, ?)",
-                 (trip_id, bus_id, lat, lon, acc))
-                 
-    # ---- ETA FOUNDATION & NEXT STOP CALCULATION ----
-    bus = conn.execute("SELECT route_id, next_stop_id FROM buses WHERE id=?", (bus_id,)).fetchone()
-    if bus and bus['route_id']:
-        stops = conn.execute("SELECT id, latitude, longitude, stop_order, stop_name, scheduled_arrival_time FROM stops WHERE route_id=? ORDER BY stop_order", (bus['route_id'],)).fetchall()
-        if stops:
-            # Simple heuristic: find the closest stop that hasn't been passed
-            # For this foundation, we just find the absolute closest stop. 
-            # If the closest stop is < 500m (approx 0.005 degrees), we assume arrived and target the next one.
-            closest_stop = stops[0]
-            min_dist = float('inf')
-            
-            for s in stops:
-                dist = calculate_distance(lat, lon, s['latitude'], s['longitude'])
-                if dist < min_dist:
-                    min_dist = dist
-                    closest_stop = s
-                    
-            next_stop_id = closest_stop['id']
-            
-            # If we are very close to the closest stop, target the next one in sequence
     conn.execute("INSERT INTO live_locations (trip_id, bus_id, latitude, longitude, accuracy) VALUES (?, ?, ?, ?, ?)",
                  (trip_id, bus_id, lat, lon, acc))
                  
