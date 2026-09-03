@@ -34,19 +34,33 @@ def auth_callback():
 def set_session():
     data = request.json or {}
     user_id = data.get('user_id')
-    email = data.get('email')
+    email = (data.get('email') or '').strip().lower()
     role = (data.get('role') or '').lower()
     name = data.get('name', email)
     
+    # Check admin whitelist
+    if email in [e.lower() for e in ADMIN_EMAILS] and role == 'admin':
+        role = 'admin'
+
     # Server-side verification from Supabase profiles
     sb = database.get_supabase()
     if sb and user_id:
         try:
             prof = sb.table('profiles').select('*').eq('id', user_id).maybe_single().execute()
             if prof and prof.data:
-                role = (prof.data.get('role') or role).lower()
+                db_role = (prof.data.get('role') or '').lower()
+                if db_role and not (email in [e.lower() for e in ADMIN_EMAILS] and role == 'admin'):
+                    role = db_role
                 email = prof.data.get('email', email)
                 name = prof.data.get('full_name', name)
+            else:
+                # Upsert profile record
+                sb.table('profiles').upsert({
+                    'id': user_id,
+                    'email': email,
+                    'full_name': name,
+                    'role': role
+                }).execute()
         except Exception as e:
             print("Server-side profile verification notice:", e)
 
@@ -68,8 +82,8 @@ def set_session():
 
 @app.route('/auth/google', methods=['POST'])
 def auth_google():
-    data = request.json
-    role = data.get('role', 'passenger')
+    data = request.json or {}
+    role = (data.get('role') or 'passenger').lower()
     demo_mode = data.get('demo_mode', False)
     
     if demo_mode:
@@ -100,7 +114,7 @@ def auth_google():
             session['user_role'] = 'admin'
             session['user_email'] = email
             session['user_name'] = name
-            return jsonify({'success': True, 'redirect': '/admin'})
+            return jsonify({'success': True, 'redirect': '/admin/dashboard'})
         
         elif role == 'driver':
             driver = None

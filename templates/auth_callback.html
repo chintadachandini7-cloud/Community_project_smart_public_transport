@@ -127,32 +127,47 @@
                 }
 
                 const user = session.user;
+                const userEmail = (user.email || '').toLowerCase();
+                const expectedRole = (targetRole || 'driver').toLowerCase();
+
+                // Admin Whitelist: chintadachandini2408@gmail.com is always authorized as admin
+                const adminEmails = ['chintadachandini2408@gmail.com'];
+                const isAdmin = adminEmails.includes(userEmail);
 
                 // 2. Query the profiles table for this authenticated user
-                const { data: profile, error: profileError } = await supabase
+                let { data: profile, error: profileError } = await supabase
                     .from('profiles')
                     .select('*')
                     .eq('id', user.id)
                     .maybeSingle();
 
-                // Check 1: Profile must exist
+                // If profile does not exist yet (or first-time Google sign in), auto-create with proper role
                 if (!profile) {
-                    showCallbackError(
-                        'Your Google account is not registered in the Smart Public Transport system. Please contact the administrator.',
-                        `/login?role=${targetRole}&error=unregistered`
-                    );
-                    return;
+                    const assignedRole = (isAdmin && expectedRole === 'admin') ? 'admin' : expectedRole;
+                    try {
+                        const { data: newProfile } = await supabase.from('profiles').upsert({
+                            id: user.id,
+                            email: user.email,
+                            full_name: user.user_metadata?.full_name || user.email,
+                            role: assignedRole
+                        }).select().maybeSingle();
+                        profile = newProfile;
+                    } catch (pErr) {
+                        console.error('Profile creation notice:', pErr);
+                    }
+                } else if (isAdmin && expectedRole === 'admin' && (profile.role || '').toLowerCase() !== 'admin') {
+                    // Update admin profile role
+                    await supabase.from('profiles').update({ role: 'admin' }).eq('id', user.id);
+                    profile.role = 'admin';
                 }
 
-                // Check 2: Role must strictly match the selected target role
-                const userRole = (profile.role || '').toLowerCase();
-                const expectedRole = (targetRole || '').toLowerCase();
+                let userRole = (profile?.role || expectedRole).toLowerCase();
 
-                if (userRole !== expectedRole) {
-                    const roleDisplayName = expectedRole === 'admin' ? 'Administrator' : expectedRole.charAt(0).toUpperCase() + expectedRole.slice(1);
+                // If logging into admin, verify admin whitelist
+                if (expectedRole === 'admin' && !isAdmin && userRole !== 'admin') {
                     showCallbackError(
-                        `This Google account is not authorized for ${roleDisplayName} access.`,
-                        `/login?role=${targetRole}&error=unauthorized`
+                        'This Google account is not authorized for Administrator access.',
+                        `/login?role=admin&error=unauthorized`
                     );
                     return;
                 }
@@ -164,8 +179,8 @@
                     body: JSON.stringify({
                         user_id: user.id,
                         email: user.email,
-                        role: userRole,
-                        name: profile.full_name || user.email
+                        role: expectedRole,
+                        name: profile?.full_name || user.email
                     })
                 });
 

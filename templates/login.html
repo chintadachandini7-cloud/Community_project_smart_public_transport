@@ -488,6 +488,56 @@
             flex-shrink: 0;
         }
 
+        /* OR Divider */
+        .divider-or {
+            display: flex;
+            align-items: center;
+            text-align: center;
+            margin: 14px 0 16px;
+            color: #94A3B8;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+        .divider-or::before, .divider-or::after {
+            content: '';
+            flex: 1;
+            border-bottom: 1px solid #E2E8F0;
+        }
+        .divider-or span {
+            padding: 0 10px;
+        }
+
+        /* 1-Click Instant Demo Login Button */
+        .demo-auth-btn {
+            width: 100%;
+            height: 46px;
+            background: #F8FAFC;
+            border: 1.5px dashed #CBD5E1;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-size: 13.5px;
+            font-weight: 600;
+            color: #475569;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-bottom: 18px;
+        }
+        .demo-auth-btn:hover {
+            border-color: var(--panel-accent, #2563EB);
+            color: var(--panel-accent, #2563EB);
+            background: #FFFFFF;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        }
+        .demo-auth-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
         /* Back to Role Selection */
         .back-btn {
             display: inline-flex;
@@ -770,6 +820,15 @@
                     <span id="google-btn-label">Continue with Google</span>
                 </button>
 
+                <!-- OR FOR INSTANT TESTING -->
+                <div class="divider-or"><span>or quick testing</span></div>
+
+                <!-- 1-Click Instant Demo Login Button -->
+                <button type="button" class="demo-auth-btn" id="demo-auth-btn" onclick="triggerDemoSignIn()">
+                    <span class="material-symbols-outlined" style="font-size:18px;">bolt</span>
+                    <span id="demo-btn-label">1-Click Test Login as Driver</span>
+                </button>
+
                 <!-- Back to Role Selection Button -->
                 <button type="button" class="back-btn" onclick="closeLoginPanel()">
                     &larr; Back to role selection
@@ -892,6 +951,12 @@
             document.getElementById('panel-title').textContent = config.title;
             document.getElementById('panel-desc').textContent = config.desc;
 
+            const roleName = role === 'admin' ? 'Administrator' : capitalize(role);
+            const demoBtnLabel = document.getElementById('demo-btn-label');
+            if (demoBtnLabel) {
+                demoBtnLabel.textContent = `1-Click Test Login as ${roleName}`;
+            }
+
             // Reset errors and button state
             hideError();
             resetGoogleButton();
@@ -930,8 +995,15 @@
                     });
 
                     if (error) {
-                        showError('Google sign-in failed. Please try again.');
+                        console.error('Supabase OAuth error:', error);
                         setButtonLoading(false);
+                        const msg = (error.message || '').toLowerCase();
+                        if (msg.includes('not enabled') || msg.includes('unsupported')) {
+                            showError('Google OAuth is not enabled in your Supabase project yet. Click "1-Click Test Login" below to test immediately, or enable Google in Supabase Dashboard → Authentication → Providers.');
+                        } else {
+                            showError('Google sign-in error: ' + (error.message || 'Please try again.'));
+                        }
+                        return;
                     }
                     // Browser will now redirect to Google
                     return;
@@ -940,28 +1012,47 @@
                 }
             }
 
-            // Fallback: If Supabase OAuth is not active yet in development, authenticate through backend
-            fetch('/auth/google', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    role: selectedRole,
-                    demo_mode: true
-                })
-            })
-            .then(res => res.json())
-            .then(result => {
-                setButtonLoading(false);
+            // If Supabase OAuth is not active, run instant test login
+            triggerDemoSignIn();
+        }
+
+        // 1-Click Instant Demo Sign-In
+        async function triggerDemoSignIn() {
+            if (!selectedRole) return;
+            hideError();
+            const demoBtn = document.getElementById('demo-auth-btn');
+            if (demoBtn) {
+                demoBtn.disabled = true;
+                demoBtn.innerHTML = `<span class="spinner" style="width:16px;height:16px;"></span> <span>Logging in...</span>`;
+            }
+
+            try {
+                const res = await fetch('/auth/google', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        role: selectedRole,
+                        demo_mode: true
+                    })
+                });
+                const result = await res.json();
                 if (result.success && result.redirect) {
                     window.location.href = result.redirect;
                 } else {
-                    showError(result.error || 'This Google account is not authorized for ' + capitalize(selectedRole) + ' access.');
+                    if (demoBtn) {
+                        const roleName = selectedRole === 'admin' ? 'Administrator' : capitalize(selectedRole);
+                        demoBtn.disabled = false;
+                        demoBtn.innerHTML = `<span class="material-symbols-outlined" style="font-size:18px;">bolt</span> <span id="demo-btn-label">1-Click Test Login as ${roleName}</span>`;
+                    }
+                    showError(result.error || 'Test login failed. Please try again.');
                 }
-            })
-            .catch(err => {
-                setButtonLoading(false);
-                showError('Google sign-in failed. Please try again.');
-            });
+            } catch (err) {
+                if (demoBtn) {
+                    demoBtn.disabled = false;
+                    demoBtn.innerHTML = `<span class="material-symbols-outlined" style="font-size:18px;">bolt</span> <span>1-Click Test Login</span>`;
+                }
+                showError('Network error connecting to backend.');
+            }
         }
 
         function setButtonLoading(isLoading) {
