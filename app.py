@@ -30,11 +30,10 @@ def auth_google():
     demo_mode = data.get('demo_mode', False)
     
     if demo_mode:
-        # Demo mode: assign a demo identity based on role
         demo_identities = {
             'passenger': {'email': 'demo_passenger@example.com', 'name': 'Demo Passenger'},
-            'driver': {'email': 'demo_driver@example.com', 'name': 'Test Driver'},
-            'conductor': {'email': 'demo_conductor@example.com', 'name': 'Test Conductor'},
+            'driver': {'email': 'demo_driver@example.com', 'name': 'Ramesh Kumar'},
+            'conductor': {'email': 'demo_conductor@example.com', 'name': 'Srikanth Babu'},
             'admin': {'email': ADMIN_EMAILS[0], 'name': 'Admin User'},
         }
         identity = demo_identities.get(role, demo_identities['passenger'])
@@ -49,79 +48,106 @@ def auth_google():
         if not email:
             return jsonify({'success': False, 'error': 'No email provided'}), 400
     
-    conn = get_db()
+    sb = database.get_supabase()
     
     try:
         if role == 'admin':
             if email not in ADMIN_EMAILS and not demo_mode:
-                conn.close()
                 return jsonify({'success': False, 'error': 'This Google account is not authorized for admin access.'}), 403
             session['user_role'] = 'admin'
             session['user_email'] = email
             session['user_name'] = name
-            conn.close()
             return jsonify({'success': True, 'redirect': '/admin'})
         
         elif role == 'driver':
-            if demo_mode:
-                driver = conn.execute("SELECT * FROM drivers LIMIT 1").fetchone()
-            else:
-                driver = conn.execute("SELECT * FROM drivers WHERE email=?", (email,)).fetchone()
+            driver = None
+            if sb:
+                try:
+                    if demo_mode:
+                        r = sb.table('drivers').select('*').limit(1).execute()
+                        driver = r.data[0] if r.data else None
+                    else:
+                        r = sb.table('drivers').select('*').eq('phone', data.get('phone', '')).execute()
+                        driver = r.data[0] if r.data else None
+                except Exception as sb_err:
+                    print("Supabase driver lookup notice:", sb_err)
             
-            if not driver and demo_mode:
-                driver = conn.execute("SELECT * FROM drivers LIMIT 1").fetchone()
+            if not driver:
+                try:
+                    conn = get_db()
+                    driver = conn.execute("SELECT * FROM drivers LIMIT 1").fetchone() if demo_mode else conn.execute("SELECT * FROM drivers WHERE email=?", (email,)).fetchone()
+                    conn.close()
+                except Exception as db_err:
+                    print("Local driver lookup fallback notice:", db_err)
             
             if driver:
-                session['driver_id'] = driver['id']
-                session['driver_name'] = driver['name']
+                d_id = driver['id']
+                d_name = driver.get('driver_name', driver.get('name', 'Driver')) if isinstance(driver, dict) else (driver['name'] if 'name' in driver.keys() else 'Driver')
+                session['driver_id'] = str(d_id)
+                session['driver_name'] = str(d_name)
                 session['user_role'] = 'driver'
                 session['user_email'] = email
                 session['user_name'] = name
-                conn.close()
                 return jsonify({'success': True, 'redirect': '/driver/dashboard'})
-            else:
-                conn.close()
-                return jsonify({'success': False, 'error': 'No driver account found for this email. Contact admin to register.'}), 403
+            return jsonify({'success': False, 'error': 'No driver account found. Contact admin to register.'}), 403
         
         elif role == 'conductor':
-            if demo_mode:
-                conductor = conn.execute("SELECT * FROM conductors LIMIT 1").fetchone()
-            else:
-                conductor = conn.execute("SELECT * FROM conductors WHERE email=?", (email,)).fetchone()
+            conductor = None
+            if sb:
+                try:
+                    if demo_mode:
+                        r = sb.table('conductors').select('*').limit(1).execute()
+                        conductor = r.data[0] if r.data else None
+                    else:
+                        r = sb.table('conductors').select('*').eq('phone', data.get('phone', '')).execute()
+                        conductor = r.data[0] if r.data else None
+                except Exception as sb_err:
+                    print("Supabase conductor lookup notice:", sb_err)
             
-            if not conductor and demo_mode:
-                conductor = conn.execute("SELECT * FROM conductors LIMIT 1").fetchone()
+            if not conductor:
+                try:
+                    conn = get_db()
+                    conductor = conn.execute("SELECT * FROM conductors LIMIT 1").fetchone() if demo_mode else conn.execute("SELECT * FROM conductors WHERE email=?", (email,)).fetchone()
+                    conn.close()
+                except Exception as db_err:
+                    print("Local conductor lookup fallback notice:", db_err)
             
             if conductor:
-                session['conductor_id'] = conductor['id']
-                session['conductor_name'] = conductor['name']
+                c_id = conductor['id']
+                c_name = conductor.get('conductor_name', conductor.get('name', 'Conductor')) if isinstance(conductor, dict) else (conductor['name'] if 'name' in conductor.keys() else 'Conductor')
+                session['conductor_id'] = str(c_id)
+                session['conductor_name'] = str(c_name)
                 session['user_role'] = 'conductor'
                 session['user_email'] = email
                 session['user_name'] = name
-                conn.close()
                 return jsonify({'success': True, 'redirect': '/conductor/dashboard'})
-            else:
-                conn.close()
-                return jsonify({'success': False, 'error': 'No conductor account found for this email. Contact admin to register.'}), 403
+            return jsonify({'success': False, 'error': 'No conductor account found. Contact admin to register.'}), 403
         
         else:
-            # Passenger — create or find user
-            user = conn.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
-            if not user:
-                conn.execute("INSERT INTO users (email, name, picture, role) VALUES (?, ?, ?, 'passenger')", 
-                           (email, name, picture))
-                conn.commit()
-                user = conn.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
+            # Passenger — cloud-authenticated via Supabase, safe on Vercel
+            passenger_id = str(uuid.uuid4())
+            if sb:
+                try:
+                    prof = sb.table('profiles').select('*').eq('email', email).execute()
+                    if prof.data:
+                        passenger_id = str(prof.data[0]['id'])
+                    else:
+                        new_u = sb.auth.admin.create_user({
+                            'email': email,
+                            'email_confirm': True,
+                            'user_metadata': {'full_name': name, 'role': 'user'}
+                        })
+                        passenger_id = str(new_u.user.id)
+                except Exception as sb_err:
+                    print("Supabase profile notice:", sb_err)
             
-            session['passenger_id'] = str(user['id'])
+            session['passenger_id'] = passenger_id
             session['user_role'] = 'passenger'
             session['user_email'] = email
             session['user_name'] = name
-            conn.close()
             return jsonify({'success': True, 'redirect': '/'})
     
     except Exception as e:
-        conn.close()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/logout')
@@ -297,12 +323,48 @@ def manage_stop(id):
 
 @app.route('/api/buses', methods=['GET', 'POST'])
 def manage_buses():
-    conn = get_db()
     if request.method == 'GET':
+        sb = database.get_supabase()
+        if sb:
+            try:
+                res = sb.table('admin_bus_overview').select('*').execute()
+                if res.data:
+                    mapped = []
+                    for b in res.data:
+                        mapped.append({
+                            'id': b.get('bus_id'),
+                            'bus_number': b.get('bus_number'),
+                            'bus_name': b.get('route_name') or b.get('bus_number'),
+                            'route_name': b.get('route_name'),
+                            'route_number': b.get('route_number'),
+                            'operator': 'APSRTC' if 'AP' in (b.get('bus_number') or '') else 'TGSRTC',
+                            'service_type': b.get('bus_type', 'Standard'),
+                            'capacity': b.get('capacity', 40),
+                            'status': b.get('bus_status', 'Active'),
+                            'gps_source': 'Real' if b.get('latitude') else 'Simulated',
+                            'current_latitude': b.get('latitude') or 16.5062,
+                            'current_longitude': b.get('longitude') or 80.6480,
+                            'current_stop': b.get('current_stop'),
+                            'next_stop': b.get('next_stop'),
+                            'next_stop_name': b.get('next_stop') or 'En route',
+                            'speed': b.get('speed', 0),
+                            'driver_name': b.get('driver_name'),
+                            'driver_phone': b.get('driver_phone'),
+                            'conductor_name': b.get('conductor_name'),
+                            'conductor_phone': b.get('conductor_phone'),
+                            'delay_status': 'ON TIME',
+                            'delay_minutes': 0
+                        })
+                    return jsonify(mapped)
+            except Exception as e:
+                print("Supabase bus fetch fallback to local:", e)
+                
+        conn = get_db()
         buses = conn.execute('SELECT b.*, r.route_name FROM buses b LEFT JOIN routes r ON b.route_id = r.id').fetchall()
         conn.close()
         return jsonify([dict(b) for b in buses])
     else:
+        conn = get_db()
         data = request.json
         err = validate_bus_data(data, conn)
         if err:

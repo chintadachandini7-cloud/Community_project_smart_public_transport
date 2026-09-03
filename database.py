@@ -1,18 +1,74 @@
-import sqlite3
 import os
+import shutil
+import sqlite3
+from dotenv import load_dotenv
+load_dotenv()
 
-# The name of our database file
+try:
+    from supabase import create_client, Client
+except ImportError:
+    create_client = None
+    Client = None
+
+# Supabase credentials from environment
+SUPABASE_URL = os.environ.get('SUPABASE_URL', 'https://vqbachaigfcxcjqcbisa.supabase.co')
+SUPABASE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', os.environ.get('SUPABASE_ANON_KEY', ''))
+
+supabase_client = None
+if create_client and SUPABASE_URL and SUPABASE_KEY:
+    try:
+        supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    except Exception as sb_err:
+        print(f"Supabase initialization warning: {sb_err}")
+
+def get_supabase():
+    """Returns the live Supabase client instance."""
+    global supabase_client
+    if supabase_client is None and create_client and SUPABASE_URL and SUPABASE_KEY:
+        try:
+            supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        except Exception as e:
+            print(f"Failed to connect to Supabase: {e}")
+    return supabase_client
+
+# Base database filename (fallback for local dev)
 DB_NAME = 'transport.db'
+
+def get_db_path():
+    """Returns a writable database path. In serverless environments like Vercel, copies transport.db to /tmp."""
+    # Check if running in Vercel or in a read-only filesystem
+    is_serverless = os.environ.get('VERCEL') or os.environ.get('AWS_LAMBDA_FUNCTION_NAME')
+    is_readonly = not os.access('.', os.W_OK)
+    
+    if is_serverless or is_readonly:
+        tmp_db = os.path.join('/tmp', DB_NAME)
+        if not os.path.exists(tmp_db):
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            src_db = os.path.join(base_dir, DB_NAME)
+            if os.path.exists(src_db):
+                try:
+                    shutil.copy2(src_db, tmp_db)
+                except Exception as e:
+                    print(f"Warning: Failed to copy {src_db} to {tmp_db}: {e}")
+        return tmp_db
+    return DB_NAME
 
 def get_db_connection():
     """Connects to the SQLite database and returns the connection object."""
-    conn = sqlite3.connect(DB_NAME)
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path, timeout=15)
     # This allows us to access columns by name (e.g., row['bus_number'])
     conn.row_factory = sqlite3.Row 
     return conn
 
 def init_db():
     """Creates the database tables if they do not exist and adds sample data."""
+    try:
+        _init_db_worker()
+    except Exception as e:
+        print(f"Database initialization warning: {e}")
+
+def _init_db_worker():
     conn = get_db_connection()
     cursor = conn.cursor()
 
