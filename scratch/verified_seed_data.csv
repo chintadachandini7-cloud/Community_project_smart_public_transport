@@ -1,0 +1,11 @@
+Type,Operator,Route Name,Source,Destination,Service Type,Data Source,Bus Number,Bus Name,Stop Name,Stop Order,Latitude,Longitude,Area Type,Scheduled Arrival Time,Source URL,Source Name,Source Type,Verification Date
+ROUTE,APSRTC,Vijayawada - Guntur Non-Stop,Vijayawada,Guntur,Non-AC Seater,OFFICIAL,,,,,,,,,https://www.apsrtconline.in/,APSRTC Official Booking,OFFICIAL_WEBSITE,2026-08-30
+BUS,APSRTC,Vijayawada - Guntur Non-Stop,,,Non-AC Seater,OFFICIAL,AP39Z1234,Guntur Express,,,,,,,https://www.apsrtconline.in/,APSRTC Official Booking,OFFICIAL_WEBSITE,2026-08-30
+STOP,APSRTC,Vijayawada - Guntur Non-Stop,,,,OFFICIAL,,,Vijayawada PNBS,1,16.5062,80.6480,CITY,,https://www.apsrtconline.in/,APSRTC Official Booking,OFFICIAL_WEBSITE,2026-08-30
+STOP,APSRTC,Vijayawada - Guntur Non-Stop,,,,OFFICIAL,,,Mangalagiri Bypass,2,,,,TOWN,,https://www.apsrtconline.in/,APSRTC Official Booking,OFFICIAL_WEBSITE,2026-08-30
+STOP,APSRTC,Vijayawada - Guntur Non-Stop,,,,OFFICIAL,,,Guntur NTR Bus Station,3,16.2997,80.4439,CITY,,https://www.apsrtconline.in/,APSRTC Official Booking,OFFICIAL_WEBSITE,2026-08-30
+ROUTE,TGSRTC,Hyderabad - Suryapet,Hyderabad,Suryapet,Rajadhani AC,OFFICIAL,,,,,,,,,https://www.tsrtconline.in/,TGSRTC Official Booking,OFFICIAL_WEBSITE,2026-08-30
+BUS,TGSRTC,Hyderabad - Suryapet,,,Rajadhani AC,OFFICIAL,TS09Z9876,Suryapet Rajadhani,,,,,,,https://www.tsrtconline.in/,TGSRTC Official Booking,OFFICIAL_WEBSITE,2026-08-30
+STOP,TGSRTC,Hyderabad - Suryapet,,,,OFFICIAL,,,MGBS Hyderabad,1,17.3770,78.4800,CITY,,https://www.tsrtconline.in/,TGSRTC Official Booking,OFFICIAL_WEBSITE,2026-08-30
+STOP,TGSRTC,Hyderabad - Suryapet,,,,OFFICIAL,,,Choutuppal,2,,,,TOWN,,https://www.tsrtconline.in/,TGSRTC Official Booking,OFFICIAL_WEBSITE,2026-08-30
+STOP,TGSRTC,Hyderabad - Suryapet,,,,OFFICIAL,,,Suryapet Bus Station,3,17.1352,79.6253,CITY,,https://www.tsrtconline.in/,TGSRTC Official Booking,OFFICIAL_WEBSITE,2026-08-30

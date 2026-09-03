@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Public Transport - Passenger Dashboard</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <header>
+        <h1>Smart Public Transport Tracking</h1>
+    </header>
+    
+    <main class="dashboard-container">
+        <!-- LEFT: Map Section -->
+        <section class="map-section" style="position: relative;">
+            <div id="map"></div>
+            <div style="position: absolute; bottom: 5px; left: 5px; z-index: 1000; background: rgba(255,255,255,0.8); padding: 5px 10px; border-radius: 4px; font-size: 0.8rem; pointer-events: none;">
+                Contains data provided by <b>TGSRTC</b> | &copy; OpenStreetMap contributors
+            </div>
+
+            <div class="card" id="route-stops-card" style="display:none; max-height: 400px; overflow-y: auto;">
+                <h2>Route & Stops</h2>
+                <div id="route-stops-container"></div>
+            </div>
+
+        </section>
+
+        <!-- RIGHT: Dashboard Cards -->
+        <section class="info-section">
+            <!-- Filter Panel -->
+            <div class="card filter-card">
+                <h2>🔎 Search Network</h2>
+                <input type="text" id="filter-search" placeholder="Search buses, routes, or stops..." onkeyup="applyFilters()" style="width: 100%; padding: 10px; margin-bottom: 15px; border-radius: 4px; border: 1px solid #ccc; box-sizing: border-box;">
+                
+                <label>Operator:</label>
+                <select id="filter-operator" onchange="applyFilters()">
+                    <option value="All">All Operators</option>
+                    <option value="APSRTC">APSRTC</option>
+                    <option value="TGSRTC">TGSRTC</option>
+                </select>
+                
+                <label>Area:</label>
+                <select id="filter-area" onchange="applyFilters()">
+                    <option value="All">All Areas</option>
+                    <option value="CITY">City</option>
+                    <option value="TOWN">Town</option>
+                    <option value="VILLAGE">Village / Rural</option>
+                </select>
+                
+                <label>Service:</label>
+                <select id="filter-service" onchange="applyFilters()">
+                    <option value="All">All Services</option>
+                    <option value="Pallevelugu">Pallevelugu</option>
+                    <option value="Express">Express</option>
+                    <option value="Super Luxury">Super Luxury</option>
+                </select>
+                
+                <label>Status:</label>
+                <select id="filter-status" onchange="applyFilters()">
+                    <option value="All">All Statuses</option>
+                    <option value="Live">Live (Active Trip)</option>
+                    <option value="Delayed">Delayed</option>
+                    <option value="On Time">On Time</option>
+                </select>
+            </div>
+
+            
+            <!-- Alert Center -->
+            <div class="card alert-card" id="passenger-alert-center" style="display:none; border-left: 5px solid #dc3545; background-color: #fff8f8; margin-bottom: 20px;">
+                <h3 style="color: #dc3545; margin-top: 0;">🔴 Alert Center</h3>
+                <div id="passenger-alerts-list">
+                    <!-- Dynamic alerts -->
+                </div>
+            </div>
+
+            
+            <!-- Complaints Section -->
+            <div class="card" id="passenger-complaints-section" style="margin-top: 20px;">
+                <h2 style="text-align: center;">Feedback / Complaints</h2>
+                
+                <div style="background: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+                    <h3>Submit a Complaint</h3>
+                    <form id="complaint-form" onsubmit="submitComplaint(event)">
+                        <div style="margin-bottom: 10px;">
+                            <label>Bus:</label>
+                            <select id="complaint-bus" style="width:100%; padding:8px;">
+                                <option value="">-- Select Bus (Optional) --</option>
+                            </select>
+                        </div>
+                        <div style="margin-bottom: 10px;">
+                            <label>Route:</label>
+                            <select id="complaint-route" style="width:100%; padding:8px;">
+                                <option value="">-- Select Route (Optional) --</option>
+                            </select>
+                        </div>
+                        <div style="margin-bottom: 10px;">
+                            <label>Category *:</label>
+                            <select id="complaint-category" style="width:100%; padding:8px;" required>
+                                <option value="">-- Select Category --</option>
+                                <option value="Bus Delay">Bus Delay</option>
+                                <option value="GPS / Tracking Issue">GPS / Tracking Issue</option>
+                                <option value="Driver / Conductor Issue">Driver / Conductor Issue</option>
+                                <option value="Bus Condition">Bus Condition</option>
+                                <option value="Route / Stop Issue">Route / Stop Issue</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                        <div style="margin-bottom: 10px;">
+                            <label>Description *:</label>
+                            <textarea id="complaint-description" rows="3" style="width:100%; padding:8px;" required></textarea>
+                        </div>
+                        <button type="submit" class="action-btn">Submit Complaint</button>
+                        <p id="complaint-msg" style="margin-top: 10px; font-weight: bold;"></p>
+                    </form>
+                </div>
+                
+                <div style="background: #fff; border: 1px solid #ddd; padding: 15px; border-radius: 5px;">
+                    <h3>My Complaints</h3>
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background:#eee; text-align:left;">
+                                <th style="padding:8px;">ID</th>
+                                <th>Category</th>
+                                <th>Status</th>
+                                <th>Date</th>
+                                <th>Admin Response</th>
+                            </tr>
+                        </thead>
+                        <tbody id="my-complaints-body">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Bus Selection -->
+
+            <div class="card search-card">
+                <h2 style="text-align: center;">↓<br><br>Available Buses</h2>
+                <select id="bus-selector">
+                    <option value="">-- Loading Buses --</option>
+                </select>
+                <button id="simulate-btn" class="action-btn" style="display:none;" onclick="toggleSimulation()">Start Simulation</button>
+            </div>
+
+            <div class="card info-card" id="bus-info" style="display:none;">
+                <h2>Bus Information</h2>
+                <p><strong>Operator:</strong> <span id="info-bus-operator">--</span> (<span id="info-bus-service">--</span>)</p>
+                <p><strong>Vehicle ID:</strong> <span id="info-bus-number">--</span></p>
+                <p><strong>Name:</strong> <span id="info-bus-name">--</span></p>
+                
+                <hr style="margin:10px 0; border:0; border-top:1px solid #eee;">
+                <div id="data-warning-box" style="background-color: #fff3cd; padding: 10px; border-radius: 4px; font-size: 0.9rem; border-left: 4px solid #ffc107;">
+                    <p style="margin: 0 0 5px 0;"><span id="info-gps-status" style="font-weight: bold; color: #856404;">GPS: SIMULATED</span></p>
+                    <p style="margin: 0; color: #856404;"><strong>Source:</strong> <span id="info-gps-source">Development/Demo Fallback</span></p>
+                    <p style="margin: 5px 0 0 0; color: #856404; font-size: 0.8rem;"><strong>Data:</strong> <span id="info-data-source">--</span></p>
+                </div>
+            </div>
+
+            <div class="card eta-card" id="eta-info" style="display:none;">
+                <div id="delay-alert-box" style="display:none; margin: 15px 0; padding: 15px; border-radius: 5px;"></div>
+                
+                <h3>Live Tracking</h3>
+                <p><strong>Next Stop:</strong> <span id="info-next-stop">--</span></p>
+                <p><strong>ETA:</strong> <span id="info-eta">--</span></p>
+                
+                <hr style="margin:10px 0; border:0; border-top:1px solid #eee;">
+                
+                <h3>Last Arrival</h3>
+                <p><strong>Stop:</strong> <span id="info-last-stop">--</span></p>
+                <p><strong>ATA:</strong> <span id="info-ata">--</span></p>
+                <p><strong>Status:</strong> <span id="info-delay" class="badge">--</span></p>
+            </div>
+            
+            <div class="card updates-card">
+                <h2>Service Updates</h2>
+                <ul id="updates-list" style="list-style-type: none; padding-left: 0;">
+                    <li>Loading updates...</li>
+                </ul>
+            </div>
+
+            <div class="card" id="route-stops-card" style="display:none; max-height: 400px; overflow-y: auto;">
+                <h2>Route & Stops</h2>
+                <div id="route-stops-container"></div>
+            </div>
+
+        </section>
+    </main>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="{{ url_for('static', filename='js/passenger.js') }}"></script>
+</body>
+</html>

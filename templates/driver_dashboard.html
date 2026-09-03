@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Driver Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        body { font-family: sans-serif; margin: 0; background: #f9f9f9; }
+        .dash-container { max-width: 600px; margin: 20px auto; padding: 15px; background: white; border: 1px solid #ddd; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .info-box { background: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 15px; border-left: 4px solid #007bff; }
+        .btn-start { background: #28a745; color: white; width: 100%; padding: 15px; font-size: 1.2rem; border:none; border-radius:5px; cursor: pointer; font-weight:bold; margin-top:10px;}
+        .btn-stop { background: #dc3545; color: white; width: 100%; padding: 15px; font-size: 1.2rem; border:none; border-radius:5px; cursor: pointer; font-weight:bold;}
+        .btn-search { background: #007bff; color: white; width: 100%; padding: 12px; font-size: 1.1rem; border:none; border-radius:5px; cursor: pointer; font-weight:bold; margin-top:10px;}
+        .data-row { display: flex; justify-content: space-between; margin-bottom: 8px; border-bottom: 1px solid #eee; padding-bottom: 4px;}
+        .data-label { font-weight: bold; color: #555; }
+        input[type=text] { width: 100%; padding: 12px; margin-top: 5px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; font-size: 1rem;}
+    </style>
+</head>
+<body>
+    <div class="dash-container">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 15px;">
+            <h2 style="margin:0;">Driver: {{ driver_name }}</h2>
+            <a href="/driver/logout" style="color:#dc3545; text-decoration:none; font-weight:bold;">Logout</a>
+        </div>
+        
+        {% if trip %}
+        <!-- ACTIVE TRIP VIEW -->
+        <div class="info-box">
+            <h3 style="margin-top:0;">Active Trip</h3>
+            <div class="data-row"><span class="data-label">Vehicle:</span> {{ trip.bus_number }}</div>
+            <div class="data-row"><span class="data-label">Route:</span> {{ trip.route_name }}</div>
+            <div class="data-row"><span class="data-label">Operator:</span> {{ trip.operator }} ({{ trip.service_type }})</div>
+            <div class="data-row"><span class="data-label">Trip Start:</span> {{ trip.start_time }}</div>
+        </div>
+        
+        <div id="trip-controls" style="margin-bottom: 20px;">
+            <button class="btn-stop" id="btn-end-trip" onclick="endTrip({{ trip.id }})">End Trip</button>
+            <input type="hidden" id="active_trip_id" value="{{ trip.id }}">
+            <input type="hidden" id="assigned_bus_id" value="{{ trip.bus_id }}">
+        </div>
+        
+        <div class="info-box" style="border-left-color: #17a2b8;">
+            <h4 style="margin-top:0; border-bottom:1px solid #ccc; padding-bottom:5px;">Live GPS Stream</h4>
+            <div class="data-row">
+                <span class="data-label">Status:</span>
+                <span id="gps-status" style="font-weight:bold; color: #28a745;">Acquiring Signal...</span>
+            </div>
+            <div class="data-row"><span class="data-label">Latitude:</span> <span id="gps-lat">--</span></div>
+            <div class="data-row"><span class="data-label">Longitude:</span> <span id="gps-lng">--</span></div>
+            <div class="data-row"><span class="data-label">Accuracy:</span> <span id="gps-acc">--</span></div>
+            <div class="data-row" style="border:none;"><span class="data-label">Last Updated:</span> <span id="gps-time">--</span></div>
+        </div>
+        
+        {% else %}
+        <!-- START TRIP WORKFLOW -->
+        <div id="bus-search-section" class="info-box" style="border-left-color: #6c757d;">
+            <h3 style="margin-top:0;">Start a New Trip</h3>
+            <p style="color:#555;">Enter the vehicle number you are operating today.</p>
+            <label class="data-label">Bus Number</label>
+            <input type="text" id="bus_number_input" placeholder="e.g. Simulated Vehicle">
+            <button class="btn-search" onclick="lookupBus()">Lookup Vehicle</button>
+            <div id="search-error" style="color:red; margin-top:10px; display:none;"></div>
+        </div>
+
+        <div id="bus-confirm-section" class="info-box" style="display:none; border-left-color: #28a745;">
+            <h3 style="margin-top:0; color:#28a745;">Vehicle Found</h3>
+            <div class="data-row"><span class="data-label">Selected Bus:</span> <span id="conf_bus_no"></span></div>
+            <div class="data-row"><span class="data-label">Bus Name:</span> <span id="conf_bus_name"></span></div>
+            <div class="data-row"><span class="data-label">Operator:</span> <span id="conf_op"></span></div>
+            <div class="data-row"><span class="data-label">Service:</span> <span id="conf_svc"></span></div>
+            <div class="data-row"><span class="data-label">Area Type:</span> <span id="conf_area"></span></div>
+            <div class="data-row"><span class="data-label">Route:</span> <span id="conf_route"></span></div>
+            <div class="data-row"><span class="data-label">Source:</span> <span id="conf_src"></span></div>
+            <div class="data-row" style="border:none;"><span class="data-label">Destination:</span> <span id="conf_dst"></span></div>
+            
+            <button class="btn-start" onclick="confirmAndStartTrip()">Confirm Bus & Start Trip</button>
+            <button class="btn-search" style="background:#6c757d; margin-top:5px;" onclick="cancelLookup()">Cancel</button>
+        </div>
+        {% endif %}
+    </div>
+
+    <script src="{{ url_for('static', filename='js/driver.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,582 @@
+1: from flask import Flask, render_template, request, jsonify
+2: import database
+4: app = Flask(__name__)
+7: database.init_db()
+9: @app.route('/', strict_slashes=False)
+10: def index():
+11: return render_template('index.html')
+13: @app.route('/admin', strict_slashes=False)
+14: def admin():
+15: return render_template('admin.html')
+18: def get_db():
+19: return database.get_db_connection()
+24: def validate_bus_data(data, conn, is_update=False, bus_id=None):
+25: if data.get('data_source') == 'OFFICIAL' and data.get('operator') not in ['APSRTC', 'TGSRTC']:
+26: return "OFFICIAL data must have operator APSRTC or TGSRTC"
+29: if is_update:
+30: b = conn.execute('SELECT id FROM buses WHERE bus_number=? AND id!=?', (data['bus_number'], bus_id)).fetchone()
+31: else:
+32: b = conn.execute('SELECT id FROM buses WHERE bus_number=?', (data['bus_number'],)).fetchone()
+33: if b: return "Bus number must be unique"
+36: if not conn.execute('SELECT id FROM routes WHERE id=?', (data['route_id'],)).fetchone():
+37: return "Route does not exist"
+39: try:
+40: lat = float(data.get('current_latitude', 0))
+41: lng = float(data.get('current_longitude', 0))
+42: if not (-90 <= lat <= 90): return "Latitude must be between -90 and 90"
+43: if not (-180 <= lng <= 180): return "Longitude must be between -180 and 180"
+44: except:
+45: return "Invalid latitude or longitude"
+46: return None
+48: def validate_route_data(data):
+49: if data.get('data_source') == 'OFFICIAL' and data.get('operator') not in ['APSRTC', 'TGSRTC']:
+50: return "OFFICIAL data must have operator APSRTC or TGSRTC"
+51: return None
+53: def validate_stop_data(data, conn):
+54: if data.get('data_source') == 'OFFICIAL' and not data.get('scheduled_arrival_time'):
+55: pass # Not strictly required by prompt but good practice
+57: if not conn.execute('SELECT id FROM routes WHERE id=?', (data['route_id'],)).fetchone():
+58: return "Route does not exist"
+60: try:
+61: if int(data.get('stop_order', 0)) <= 0: return "Stop order must be > 0"
+62: except: return "Invalid stop order"
+64: try:
+65: lat = float(data.get('latitude', 0))
+66: lng = float(data.get('longitude', 0))
+67: if not (-90 <= lat <= 90): return "Latitude must be between -90 and 90"
+68: if not (-180 <= lng <= 180): return "Longitude must be between -180 and 180"
+69: except:
+70: return "Invalid latitude or longitude"
+71: return None
+77: @app.route('/api/routes', methods=['GET'])
+78: def get_routes():
+79: conn = get_db()
+80: routes = conn.execute('SELECT * FROM routes').fetchall()
+81: conn.close()
+82: return jsonify([dict(row) for row in routes])
+84: @app.route('/api/routes', methods=['POST'])
+85: def add_route():
+86: data = request.json
+87: err = validate_route_data(data)
+88: if err: return jsonify({'error': err}), 400
+89: conn = get_db()
+90: cursor = conn.execute('INSERT INTO routes (route_name, source, destination, operator, service_type, data_source) VALUES (?, ?, ?, ?, ?, ?)',
+91: (data['route_name'], data['source'], data['destination'], data.get('operator'), data.get('service_type'), data.get('data_source', 'DEMO')))
+92: conn.commit()
+93: conn.close()
+94: return jsonify({'id': cursor.lastrowid, 'message': 'Route added successfully'})
+97: @app.route('/api/routes/<int:id>', methods=['PUT'])
+98: def update_route(id):
+99: data = request.json
+100: err = validate_route_data(data)
+101: if err: return jsonify({'error': err}), 400
+102: conn = get_db()
+103: conn.execute('UPDATE routes SET route_name=?, source=?, destination=?, operator=?, service_type=?, data_source=? WHERE id=?',
+104: (data['route_name'], data['source'], data['destination'], data.get('operator'), data.get('service_type'), data.get('data_source', 'DEMO'), id))
+105: conn.commit()
+106: conn.close()
+107: return jsonify({'success': True})
+109: @app.route('/api/routes/<int:id>', methods=['DELETE'])
+110: def delete_route(id):
+111: conn = get_db()
+112: conn.execute('DELETE FROM routes WHERE id=?', (id,))
+113: conn.commit()
+114: conn.close()
+115: return jsonify({'success': True})
+117: @app.route('/api/stops', methods=['GET', 'POST'])
+118: def manage_stops():
+119: conn = get_db()
+120: if request.method == 'GET':
+121: stops = conn.execute('SELECT s.*, r.route_name FROM stops s LEFT JOIN routes r ON s.route_id = r.id ORDER BY s.route_id, s.stop_order').fetchall()
+122: conn.close()
+123: return jsonify([dict(s) for s in stops])
+124: else:
+125: data = request.json
+126: err = validate_stop_data(data, conn)
+127: if err:
+128: conn.close()
+129: return jsonify({'error': err}), 400
+130: conn.execute('INSERT INTO stops (route_id, stop_name, latitude, longitude, stop_order, area_type, scheduled_arrival_time, data_source) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+131: (data['route_id'], data['stop_name'], data['latitude'], data['longitude'], data['stop_order'], data.get('area_type'), data.get('scheduled_arrival_time'), data.get('data_source', 'DEMO')))
+132: conn.commit()
+133: conn.close()
+134: return jsonify({'success': True})
+136: @app.route('/api/stops/<int:id>', methods=['PUT', 'DELETE'])
+137: def manage_stop(id):
+138: conn = get_db()
+139: if request.method == 'PUT':
+140: data = request.json
+141: err = validate_stop_data(data, conn)
+142: if err:
+143: conn.close()
+144: return jsonify({'error': err}), 400
+145: conn.execute('UPDATE stops SET route_id=?, stop_name=?, latitude=?, longitude=?, stop_order=?, area_type=?, scheduled_arrival_time=?, data_source=? WHERE id=?',
+146: (data['route_id'], data['stop_name'], data['latitude'], data['longitude'], data['stop_order'], data.get('area_type'), data.get('scheduled_arrival_time'), data.get('data_source', 'DEMO'), id))
+147: conn.commit()
+148: conn.close()
+149: return jsonify({'success': True})
+150: elif request.method == 'DELETE':
+151: conn.execute('DELETE FROM stops WHERE id=?', (id,))
+152: conn.commit()
+153: conn.close()
+154: return jsonify({'success': True})
+156: @app.route('/api/buses', methods=['GET', 'POST'])
+157: def manage_buses():
+158: conn = get_db()
+159: if request.method == 'GET':
+160: buses = conn.execute('SELECT b.*, r.route_name FROM buses b LEFT JOIN routes r ON b.route_id = r.id').fetchall()
+161: conn.close()
+162: return jsonify([dict(b) for b in buses])
+163: else:
+164: data = request.json
+165: err = validate_bus_data(data, conn)
+166: if err:
+167: conn.close()
+168: return jsonify({'error': err}), 400
+169: conn.execute('INSERT INTO buses (bus_number, bus_name, route_id, current_latitude, current_longitude, status, operator, service_type, data_source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+170: (data['bus_number'], data.get('bus_name'), data['route_id'], data['current_latitude'], data['current_longitude'], data['status'], data.get('operator'), data.get('service_type'), data.get('data_source', 'DEMO')))
+171: conn.commit()
+172: conn.close()
+173: return jsonify({'success': True})
+175: @app.route('/api/buses/<int:id>', methods=['PUT', 'DELETE'])
+176: def manage_bus(id):
+177: conn = get_db()
+178: if request.method == 'PUT':
+179: data = request.json
+180: err = validate_bus_data(data, conn, is_update=True, bus_id=id)
+181: if err:
+182: conn.close()
+183: return jsonify({'error': err}), 400
+184: conn.execute('UPDATE buses SET bus_number=?, bus_name=?, route_id=?, current_latitude=?, current_longitude=?, status=?, operator=?, service_type=?, data_source=? WHERE id=?',
+185: (data['bus_number'], data.get('bus_name'), data['route_id'], data['current_latitude'], data['current_longitude'], data['status'], data.get('operator'), data.get('service_type'), data.get('data_source', 'DEMO'), id))
+186: conn.commit()
+187: conn.close()
+188: return jsonify({'success': True})
+189: elif request.method == 'DELETE':
+190: conn.execute('DELETE FROM buses WHERE id=?', (id,))
+191: conn.commit()
+192: conn.close()
+193: return jsonify({'success': True})
+195: from datetime import datetime, timedelta
+196: import math
+198: @app.route('/api/tracking_data', methods=['GET'])
+199: def get_tracking_data():
+200: conn = get_db()
+201: buses = conn.execute('SELECT * FROM buses').fetchall()
+202: stops = conn.execute('SELECT * FROM stops ORDER BY route_id, stop_order').fetchall()
+203: routes = conn.execute('SELECT * FROM routes').fetchall()
+204: service_updates = conn.execute('SELECT * FROM service_updates ORDER BY created_at DESC LIMIT 5').fetchall()
+207: arrivals = conn.execute('''
+208: SELECT a.*, s.stop_name
+209: FROM arrivals a
+210: JOIN stops s ON a.stop_id = s.id
+211: WHERE a.id IN (SELECT MAX(id) FROM arrivals GROUP BY bus_id)
+212: ''').fetchall()
+213: conn.close()
+215: return jsonify({
+216: 'server_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+217: 'buses': [dict(b) for b in buses],
+218: 'stops': [dict(s) for s in stops],
+219: 'routes': [dict(r) for r in routes],
+220: 'updates': [dict(u) for u in service_updates],
+221: 'latest_arrivals': {a['bus_id']: dict(a) for a in arrivals}
+222: })
+224: def calculate_distance(lat1, lon1, lat2, lon2):
+226: return math.sqrt((lat2 - lat1)**2 + (lon2 - lon1)**2)
+228: @app.route('/api/simulate/move/<int:bus_id>', methods=['POST'])
+229: def simulate_move(bus_id):
+230: conn = get_db()
+231: bus = conn.execute('SELECT * FROM buses WHERE id=?', (bus_id,)).fetchone()
+232: if not bus:
+233: return jsonify({'error': 'Bus not found'}), 404
+235: route_id = bus['route_id']
+236: if not route_id:
+237: return jsonify({'error': 'Bus has no route assigned'}), 400
+239: stops = conn.execute('SELECT * FROM stops WHERE route_id=? ORDER BY stop_order', (route_id,)).fetchall()
+240: if not stops:
+241: return jsonify({'error': 'No stops found for this route'}), 400
+243: next_stop_id = bus['next_stop_id']
+246: if not next_stop_id:
+247: target_stop = stops[0]
+248: else:
+249: target_stop = next((s for s in stops if s['id'] == next_stop_id), stops[0])
+251: current_lat, current_lon = bus['current_latitude'], bus['current_longitude']
+252: target_lat, target_lon = target_stop['latitude'], target_stop['longitude']
+254: distance = calculate_distance(current_lat, current_lon, target_lat, target_lon)
+255: STEP = 0.0003 # Map units to move per tick
+257: arrived = False
+258: if distance <= STEP:
+259: arrived = True
+260: new_lat, new_lon = target_lat, target_lon
+261: else:
+262: ratio = STEP / distance
+263: new_lat = current_lat + (target_lat - current_lat) * ratio
+264: new_lon = current_lon + (target_lon - current_lon) * ratio
+267: ticks_remaining = distance / STEP
+268: eta_time = (datetime.now() + timedelta(seconds=ticks_remaining)).strftime("%H:%M:%S")
+270: if arrived:
+271: conn.execute('UPDATE buses SET current_latitude=?, current_longitude=?, next_stop_id=? WHERE id=?',
+272: (new_lat, new_lon, new_next_stop_id, bus_id))
+274: ata_time = datetime.now().strftime("%H:%M:%S")
+275: import random
+276: delay = random.choice([0, 0, 0, 2, 5, -1]) # Demo delay
+278: conn.execute('INSERT INTO arrivals (bus_id, stop_id, eta, ata, delay_minutes) VALUES (?, ?, ?, ?, ?)',
+279: (bus_id, target_stop['id'], eta_time, ata_time, delay))
+280: else:
+281: conn.execute('UPDATE buses SET current_latitude=?, current_longitude=?, next_stop_id=? WHERE id=?',
+282: (new_lat, new_lon, target_stop['id'], bus_id))
+284: conn.commit()
+285: conn.close()
+287: return jsonify({
+288: 'arrived': arrived, 'new_lat': new_lat, 'new_lon': new_lon,
+289: 'eta': eta_time, 'target_stop_name': target_stop['stop_name']
+290: })
+292: return jsonify({
+293: 'arrived': arrived, 'new_lat': new_lat, 'new_lon': new_lon,
+294: 'eta': eta_time, 'target_stop_name': target_stop['stop_name']
+295: })
+301: @app.route('/driver/login', methods=['GET', 'POST'], strict_slashes=False)
+302: def driver_login():
+303: if request.method == 'POST':
+304: phone = request.form.get('phone')
+305: password = request.form.get('password')
+306: conn = get_db()
+307: driver = conn.execute("SELECT * FROM drivers WHERE phone=? AND password=?", (phone, password)).fetchone()
+308: conn.close()
+309: if driver:
+310: session['driver_id'] = driver['id']
+311: session['driver_name'] = driver['name']
+312: return redirect(url_for('driver_dashboard'))
+313: return "Invalid credentials", 401
+314: return render_template('driver_login.html')
+316: @app.route('/driver/logout')
+317: def driver_logout():
+318: session.pop('driver_id', None)
+319: return redirect(url_for('driver_login'))
+321: @app.route('/driver/dashboard')
+322: def driver_dashboard():
+323: if 'driver_id' not in session:
+324: return redirect(url_for('driver_login'))
+326: conn = get_db()
+328: trip = conn.execute("SELECT t.*, b.bus_number, b.bus_name, b.operator, b.service_type, r.route_name FROM trips t JOIN buses b ON t.bus_id = b.id LEFT JOIN routes r ON t.route_id = r.id WHERE t.driver_id=? AND t.status='Active'", (session['driver_id'],)).fetchone()
+329: conn.close()
+331: return render_template('driver_dashboard.html', driver_name=session['driver_name'], trip=trip)
+333: @app.route('/api/bus/by-number/<bus_number>', methods=['GET'])
+334: def get_bus_by_number(bus_number):
+335: conn = get_db()
+336: bus = conn.execute('''
+337: SELECT b.id as bus_id, b.bus_number, b.bus_name, b.operator, b.service_type, b.status,
+338: r.id as route_id, r.route_name, r.source, r.destination
+339: FROM buses b
+340: LEFT JOIN routes r ON b.route_id = r.id
+341: WHERE b.bus_number=? COLLATE NOCASE
+342: ''', (bus_number,)).fetchone()
+343: conn.close()
+345: if bus:
+346: return jsonify(dict(bus))
+347: else:
+348: return jsonify({'error': 'Bus not found. Please check the bus number or contact the administrator.'}), 404
+350: @app.route('/conductor/login', methods=['GET', 'POST'], strict_slashes=False)
+351: def conductor_login():
+352: if request.method == 'POST':
+353: phone = request.form.get('phone')
+354: password = request.form.get('password')
+355: conn = get_db()
+356: conductor = conn.execute("SELECT * FROM conductors WHERE phone=? AND password=?", (phone, password)).fetchone()
+357: conn.close()
+358: if conductor:
+359: session['conductor_id'] = conductor['id']
+360: session['conductor_name'] = conductor['name']
+361: return redirect(url_for('conductor_dashboard'))
+362: return "Invalid credentials", 401
+363: return render_template('conductor_login.html')
+365: @app.route('/conductor/logout')
+366: def conductor_logout():
+367: session.pop('conductor_id', None)
+368: return redirect(url_for('conductor_login'))
+370: @app.route('/conductor/dashboard')
+371: def conductor_dashboard():
+372: if 'conductor_id' not in session:
+373: return redirect(url_for('conductor_login'))
+375: conn = get_db()
+377: trip = conn.execute('''
+378: SELECT t.*, b.bus_number, b.bus_name, b.operator, b.service_type, b.delay_status, b.delay_minutes, r.route_name
+379: FROM trips t
+380: JOIN buses b ON t.bus_id = b.id
+381: LEFT JOIN routes r ON t.route_id = r.id
+382: WHERE t.conductor_id=? AND t.status='Active'
+383: ''', (session['conductor_id'],)).fetchone()
+384: conn.close()
+386: return render_template('conductor_dashboard.html', conductor_name=session['conductor_name'], trip=trip)
+388: @app.route('/api/conductor/join-trip', methods=['POST'])
+389: def conductor_join_trip():
+390: if 'conductor_id' not in session:
+391: return jsonify({'error': 'Unauthorized'}), 401
+393: bus_id = request.json.get('bus_id')
+394: if not bus_id:
+395: return jsonify({'error': 'Bus ID is required'}), 400
+397: conn = get_db()
+400: existing = conn.execute("SELECT id FROM trips WHERE conductor_id=? AND status='Active'", (session['conductor_id'],)).fetchone()
+401: if existing:
+402: conn.close()
+403: return jsonify({'error': 'You are already assigned to an active trip.'}), 400
+406: trip = conn.execute("SELECT id, conductor_id FROM trips WHERE bus_id=? AND status='Active'", (bus_id,)).fetchone()
+407: if not trip:
+408: conn.close()
+409: return jsonify({'error': 'No active trip found for this bus. Please wait for the driver to start the trip.'}), 404
+411: if trip['conductor_id'] and trip['conductor_id'] != session['conductor_id']:
+412: conn.close()
+413: return jsonify({'error': 'Another conductor is already assigned to this trip.'}), 400
+415: conn.execute("UPDATE trips SET conductor_id=? WHERE id=?", (session['conductor_id'], trip['id']))
+416: conn.commit()
+417: conn.close()
+419: return jsonify({'success': True, 'message': 'Joined trip successfully.'})
+421: @app.route('/api/conductor/leave-trip', methods=['POST'])
+422: def conductor_leave_trip():
+423: if 'conductor_id' not in session:
+424: return jsonify({'error': 'Unauthorized'}), 401
+426: conn = get_db()
+427: conn.execute("UPDATE trips SET conductor_id=NULL WHERE conductor_id=? AND status='Active'", (session['conductor_id'],))
+428: conn.commit()
+429: conn.close()
+431: return jsonify({'success': True, 'message': 'Left trip successfully.'})
+433: def start_trip():
+434: if 'driver_id' not in session:
+435: return jsonify({'error': 'Unauthorized'}), 401
+437: data = request.json
+438: bus_id = data.get('bus_id')
+440: conn = get_db()
+442: bus = conn.execute("SELECT route_id FROM buses WHERE id=?", (bus_id,)).fetchone()
+443: if not bus:
+444: conn.close()
+445: return jsonify({'error': 'Bus not found'}), 404
+448: existing_driver_trip = conn.execute("SELECT id FROM trips WHERE driver_id=? AND status='Active'", (session['driver_id'],)).fetchone()
+449: if existing_driver_trip:
+450: conn.close()
+451: return jsonify({'error': 'You already have an active trip. Please end it first.'}), 400
+454: existing_bus_trip = conn.execute("SELECT id FROM trips WHERE bus_id=? AND status='Active'", (bus_id,)).fetchone()
+455: if existing_bus_trip:
+456: conn.close()
+457: return jsonify({'error': 'This bus is already on an active trip.'}), 400
+459: cursor = conn.execute("INSERT INTO trips (bus_id, driver_id, route_id, status) VALUES (?, ?, ?, 'Active')", (bus_id, session['driver_id'], bus['route_id']))
+460: trip_id = cursor.lastrowid
+463: conn.execute("UPDATE buses SET gps_source='Real', status='Active Trip' WHERE id=?", (bus_id,))
+464: conn.commit()
+465: conn.close()
+467: return jsonify({'message': 'Trip started', 'trip_id': trip_id})
+469: @app.route('/api/driver/end-trip', methods=['POST'])
+470: def end_trip():
+471: if 'driver_id' not in session:
+472: return jsonify({'error': 'Unauthorized'}), 401
+474: data = request.json
+475: trip_id = data.get('trip_id')
+477: conn = get_db()
+478: conn.execute("UPDATE trips SET status='Completed', end_time=CURRENT_TIMESTAMP WHERE id=?", (trip_id,))
+481: trip = conn.execute("SELECT bus_id FROM trips WHERE id=?", (trip_id,)).fetchone()
+482: if trip:
+483: conn.execute("UPDATE buses SET gps_source='Simulated', status='Idle' WHERE id=?", (trip['bus_id'],))
+485: conn.commit()
+486: conn.close()
+488: return jsonify({'message': 'Trip ended'})
+490: if not all([trip_id, bus_id, lat, lon]):
+491: return jsonify({'error': 'Missing data'}), 400
+493: conn = get_db()
+495: conn.execute("INSERT INTO live_locations (trip_id, bus_id, latitude, longitude, accuracy) VALUES (?, ?, ?, ?, ?)",
+496: (trip_id, bus_id, lat, lon, acc))
+499: bus = conn.execute("SELECT route_id, next_stop_id FROM buses WHERE id=?", (bus_id,)).fetchone()
+500: if bus and bus['route_id']:
+501: stops = conn.execute("SELECT id, latitude, longitude, stop_order, stop_name, scheduled_arrival_time FROM stops WHERE route_id=? ORDER BY stop_order", (bus['route_id'],)).fetchall()
+502: if stops:
+506: closest_stop = stops[0]
+507: min_dist = float('inf')
+509: for s in stops:
+510: dist = calculate_distance(lat, lon, s['latitude'], s['longitude'])
+511: if dist < min_dist:
+512: min_dist = dist
+513: closest_stop = s
+515: next_stop_id = closest_stop['id']
+518: conn.execute("INSERT INTO live_locations (trip_id, bus_id, latitude, longitude, accuracy) VALUES (?, ?, ?, ?, ?)",
+519: (trip_id, bus_id, lat, lon, acc))
+522: bus = conn.execute("SELECT route_id, next_stop_id FROM buses WHERE id=?", (bus_id,)).fetchone()
+523: if bus and bus['route_id']:
+524: stops = conn.execute("SELECT id, latitude, longitude, stop_order, stop_name, scheduled_arrival_time FROM stops WHERE route_id=? ORDER BY stop_order", (bus['route_id'],)).fetchall()
+525: if stops:
+529: closest_stop = stops[0]
+530: min_dist = float('inf')
+532: for s in stops:
+533: dist = calculate_distance(lat, lon, s['latitude'], s['longitude'])
+534: if dist < min_dist:
+535: min_dist = dist
+536: closest_stop = s
+538: next_stop_id = closest_stop['id']
+541: delay_status = 'ON TIME'
+542: delay_minutes = 0
+543: now = datetime.now()
+546: target_stop = closest_stop
+547: arrived = False
+550: if min_dist < 0.5:
+551: arrived = True
+552: curr_idx = stops.index(closest_stop)
+553: if curr_idx + 1 < len(stops):
+554: target_stop = stops[curr_idx + 1]
+555: next_stop_id = target_stop['id']
+558: sched_str = target_stop.get('scheduled_arrival_time')
+559: if sched_str:
+560: sched_dt = datetime.strptime(f"{now.strftime('%Y-%m-%d')} {sched_str}", '%Y-%m-%d %H:%M:%S')
+561: if now > sched_dt:
+562: delay_status = 'DELAYED'
+563: delay_minutes = int((now - sched_dt).total_seconds() / 60)
+566: existing_alert = conn.execute("SELECT id FROM service_updates WHERE trip_id=? AND stop_id=? AND status='Active'", (trip_id, next_stop_id)).fetchone()
+567: if not existing_alert:
+568: b_info = conn.execute("SELECT bus_number, route_id FROM buses WHERE id=?", (bus_id,)).fetchone()
+569: r_info = conn.execute("SELECT route_name FROM routes WHERE id=?", (b_info['route_id'],)).fetchone()
+570: msg = f"Next Stop: {target_stop['stop_name']}. Scheduled: {sched_dt.strftime('%I:%M %p')}. Expected: {now.strftime('%I:%M %p')}."
+571: conn.execute("INSERT INTO service_updates (title, message, status, trip_id, stop_id) VALUES (?, ?, 'Active', ?, ?)",
+572: (f"🔴 {b_info['bus_number']} delayed by {delay_minutes} minutes.", msg, trip_id, next_stop_id))
+575: if arrived:
+577: ata_str = now.strftime('%I:%M %p')
+579: arr_sched_str = closest_stop.get('scheduled_arrival_time')
+580: arr_delay_mins = 0
+581: if arr_sched_str:
+582: arr_sched_dt = datetime.strptime(f"{now.strftime('%Y-%m-%d')} {arr_sched_str}", '%Y-%m-%d %H:%M:%S')
+583: if now > arr_sched_dt:
+584: arr_delay_mins = int((now - arr_sched_dt).total_seconds() / 60)
+586: conn.execute("INSERT INTO arrivals (bus_id, stop_id, ata, delay_minutes) VALUES (?, ?, ?, ?)",
+587: (bus_id, closest_stop['id'], ata_str, arr_delay_mins))
+590: conn.execute("UPDATE service_updates SET status='Resolved' WHERE trip_id=? AND stop_id=? AND status='Active'",
+591: (trip_id, closest_stop['id']))
+594: conn.execute("UPDATE buses SET current_latitude=?, current_longitude=?, next_stop_id=?, delay_status=?, delay_minutes=? WHERE id=?",
+595: (lat, lon, next_stop_id, delay_status, delay_minutes, bus_id))
+596: else:
+597: conn.execute("UPDATE buses SET current_latitude=?, current_longitude=? WHERE id=?", (lat, lon, bus_id))
+598: else:
+599: conn.execute("UPDATE buses SET current_latitude=?, current_longitude=? WHERE id=?", (lat, lon, bus_id))
+601: conn.commit()
+602: conn.close()
+604: return jsonify({'message': 'Location updated'})
+611: @app.route('/api/import/preview', methods=['POST'])
+612: def import_preview():
+613: records = request.json.get('records', [])
+614: conn = get_db()
+616: preview = {
+617: 'adds': [],
+618: 'updates': [],
+619: 'duplicates': [],
+620: 'rejected': []
+621: }
+624: for row in records:
+625: entity_type = row.get('Type', '').upper()
+628: data_source = row.get('Data Source', 'OFFICIAL')
+629: op = row.get('Operator', '')
+630: if data_source == 'OFFICIAL':
+631: if op not in ['APSRTC', 'TGSRTC']:
+632: preview['rejected'].append({'row': row, 'error': 'OFFICIAL data must have Operator APSRTC or TGSRTC'})
+633: continue
+634: if not row.get('Source URL') and not row.get('Source Reference'):
+635: preview['rejected'].append({'row': row, 'error': 'OFFICIAL data requires a Source URL or Source Reference'})
+636: continue
+637: if not row.get('Verification Date'):
+638: preview['rejected'].append({'row': row, 'error': 'OFFICIAL data requires a Verification Date'})
+639: continue
+642: if entity_type == 'ROUTE':
+643: existing = conn.execute("SELECT id FROM routes WHERE route_name=? AND source=? AND destination=?", (row.get('Route Name'), row.get('Source'), row.get('Destination'))).fetchone()
+644: if existing:
+645: preview['duplicates'].append({'row': row, 'reason': 'Route already exists'})
+646: else:
+647: preview['adds'].append({'row': row, 'type': 'ROUTE'})
+649: elif entity_type == 'BUS':
+650: bus_no = row.get('Bus Number')
+651: existing = conn.execute("SELECT id, status FROM buses WHERE bus_number=?", (bus_no,)).fetchone()
+654: r_name = row.get('Route Name')
+655: route = conn.execute("SELECT id FROM routes WHERE route_name=?", (r_name,)).fetchone()
+656: if not route:
+657: preview['rejected'].append({'row': row, 'error': f'Route {r_name} does not exist in DB yet (import routes first)'})
+658: continue
+660: if existing:
+661: if existing['status'] == 'Active Trip':
+662: preview['rejected'].append({'row': row, 'error': 'Cannot overwrite bus on an active trip'})
+663: else:
+664: preview['updates'].append({'row': row, 'type': 'BUS', 'id': existing['id']})
+665: else:
+666: preview['adds'].append({'row': row, 'type': 'BUS'})
+668: elif entity_type == 'STOP':
+669: r_name = row.get('Route Name')
+670: route = conn.execute("SELECT id FROM routes WHERE route_name=?", (r_name,)).fetchone()
+671: if not route:
+672: preview['rejected'].append({'row': row, 'error': f'Route {r_name} does not exist in DB'})
+673: continue
+675: s_name = row.get('Stop Name')
+676: existing = conn.execute("SELECT id FROM stops WHERE route_id=? AND stop_name=?", (route['id'], s_name)).fetchone()
+678: try:
+679: lat = float(row.get('Latitude', 0))
+680: lng = float(row.get('Longitude', 0))
+681: if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+682: preview['rejected'].append({'row': row, 'error': 'Invalid coordinates'})
+683: continue
+684: except:
+685: preview['rejected'].append({'row': row, 'error': 'Invalid coordinates format'})
+686: continue
+688: if existing:
+689: preview['updates'].append({'row': row, 'type': 'STOP', 'id': existing['id']})
+690: else:
+691: preview['adds'].append({'row': row, 'type': 'STOP'})
+692: else:
+693: preview['rejected'].append({'row': row, 'error': 'Unknown Type (must be ROUTE, BUS, or STOP)'})
+695: conn.close()
+696: return jsonify(preview)
+698: @app.route('/api/import/commit', methods=['POST'])
+699: def import_commit():
+700: payload = request.json
+701: adds = payload.get('adds', [])
+702: updates = payload.get('updates', [])
+704: conn = get_db()
+705: stats = {'routes': 0, 'buses': 0, 'stops': 0}
+708: for item in adds:
+709: row = item['row']
+710: etype = item['type']
+711: ds = row.get('Data Source', 'OFFICIAL')
+712: op = row.get('Operator')
+714: if etype == 'ROUTE':
+715: conn.execute('INSERT INTO routes (route_name, source, destination, operator, service_type, data_source, source_url, source_name, source_type, verified_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+716: (row.get('Route Name'), row.get('Source'), row.get('Destination'), op, row.get('Service Type'), ds, row.get('Source URL'), row.get('Source Name'), row.get('Source Type'), row.get('Verification Date')))
+717: stats['routes'] += 1
+719: elif etype == 'BUS':
+720: route = conn.execute("SELECT id FROM routes WHERE route_name=?", (row.get('Route Name'),)).fetchone()
+721: if route:
+722: conn.execute('INSERT INTO buses (bus_number, bus_name, route_id, current_latitude, current_longitude, status, operator, service_type, data_source, source_url, source_name, source_type, verified_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+723: (row.get('Bus Number'), row.get('Bus Name'), route['id'], row.get('Latitude', 0), row.get('Longitude', 0), 'Idle', op, row.get('Service Type'), ds, row.get('Source URL'), row.get('Source Name'), row.get('Source Type'), row.get('Verification Date')))
+724: stats['buses'] += 1
+726: elif etype == 'STOP':
+727: route = conn.execute("SELECT id FROM routes WHERE route_name=?", (row.get('Route Name'),)).fetchone()
+728: if route:
+729: conn.execute('INSERT INTO stops (route_id, stop_name, latitude, longitude, stop_order, area_type, scheduled_arrival_time, data_source, source_url, source_name, source_type, verified_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+730: (route['id'], row.get('Stop Name'), row.get('Latitude'), row.get('Longitude'), row.get('Stop Order', 1), row.get('Area Type'), row.get('Scheduled Arrival Time'), ds, row.get('Source URL'), row.get('Source Name'), row.get('Source Type'), row.get('Verification Date')))
+731: stats['stops'] += 1
+734: for item in updates:
+735: row = item['row']
+736: etype = item['type']
+737: eid = item['id']
+738: ds = row.get('Data Source', 'OFFICIAL')
+739: op = row.get('Operator')
+741: if etype == 'BUS':
+742: route = conn.execute("SELECT id FROM routes WHERE route_name=?", (row.get('Route Name'),)).fetchone()
+743: if route:
+744: conn.execute('UPDATE buses SET bus_name=?, route_id=?, operator=?, service_type=?, data_source=?, source_url=?, source_name=?, source_type=?, verified_at=? WHERE id=?',
+745: (row.get('Bus Name'), route['id'], op, row.get('Service Type'), ds, row.get('Source URL'), row.get('Source Name'), row.get('Source Type'), row.get('Verification Date'), eid))
+746: stats['buses'] += 1
+748: elif etype == 'STOP':
+749: route = conn.execute("SELECT id FROM routes WHERE route_name=?", (row.get('Route Name'),)).fetchone()
+750: if route:
+751: conn.execute('UPDATE stops SET latitude=?, longitude=?, stop_order=?, area_type=?, scheduled_arrival_time=?, data_source=?, source_url=?, source_name=?, source_type=?, verified_at=? WHERE id=?',
+752: (row.get('Latitude'), row.get('Longitude'), row.get('Stop Order', 1), row.get('Area Type'), row.get('Scheduled Arrival Time'), ds, row.get('Source URL'), row.get('Source Name'), row.get('Source Type'), row.get('Verification Date'), eid))
+753: stats['stops'] += 1
+755: conn.commit()
+756: conn.close()
+758: return jsonify({'success': True, 'stats': stats})
+760: if __name__ == '__main__':
+761: app.run(
+762: debug=True,
+763: host='0.0.0.0',
+764: port=5000,
+765: ssl_context='adhoc'
+766: )
