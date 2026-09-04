@@ -10,16 +10,11 @@ except ImportError:
     create_client = None
     Client = None
 
-DEFAULT_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZxYmFjaGFpZ2ZjeGNqcWNiaXNhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0MTgyNzEsImV4cCI6MjEwMzk5NDI3MX0.aYAwfPH1ErmWMcfY2A9GTmYSbGoFDJRVZ74kwmim2PA'
+DEFAULT_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZxYmFjaGFpZ2ZjeGNqcWNiaXNhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4ODQxODI3MSwiZXhwIjoyMTAzOTk0MjcxfQ.7jErYQeys6T-Lb80gevexZvWser4a2cXfNHtx-kt3WU'
 SUPABASE_URL = os.environ.get('SUPABASE_URL', 'https://vqbachaigfcxcjqcbisa.supabase.co')
-SUPABASE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', os.environ.get('SUPABASE_ANON_KEY', DEFAULT_ANON_KEY))
+SUPABASE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', os.environ.get('SUPABASE_ANON_KEY', DEFAULT_SERVICE_KEY))
 
 supabase_client = None
-if create_client and SUPABASE_URL and SUPABASE_KEY:
-    try:
-        supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
-    except Exception as sb_err:
-        print(f"Supabase initialization warning: {sb_err}")
 
 def get_supabase():
     """Returns the live Supabase client instance."""

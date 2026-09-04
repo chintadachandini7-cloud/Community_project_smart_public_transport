@@ -750,10 +750,25 @@ def api_health():
             sb_connected = True
         except Exception as e:
             err_msg = f"{type(e).__name__}: {str(e)}"
+            
+    rest_buses = 0
+    try:
+        url = f"{database.SUPABASE_URL}/rest/v1/buses?select=*"
+        headers = {
+            'apikey': database.SUPABASE_KEY,
+            'Authorization': f'Bearer {database.SUPABASE_KEY}',
+            'Content-Type': 'application/json'
+        }
+        r = requests.get(url, headers=headers, timeout=5)
+        if r.status_code == 200:
+            rest_buses = len(r.json())
+    except Exception as re_err:
+        pass
+
     return jsonify({
         'status': 'ok',
-        'supabase_connected': sb_connected,
-        'create_client_exists': database.create_client is not None,
+        'supabase_client_connected': sb_connected,
+        'supabase_rest_buses': rest_buses,
         'supabase_client_exists': sb is not None,
         'supabase_key_length': len(database.SUPABASE_KEY) if database.SUPABASE_KEY else 0,
         'supabase_error': err_msg,
@@ -765,36 +780,55 @@ def get_bus_by_number(bus_number):
     cleaned_no = bus_number.strip()
     normalized_target = cleaned_no.replace(' ', '').upper()
 
-    # 1. First check Supabase cloud database
+    def format_bus_response(b):
+        route_name = b.get('route_name') or ''
+        parts = [p.strip() for p in route_name.split('-')] if '-' in route_name else [route_name, '']
+        src = parts[0] if len(parts) >= 1 else ''
+        dst = parts[1] if len(parts) >= 2 else ''
+        return jsonify({
+            'bus_id': b.get('id'),
+            'bus_number': b.get('bus_number'),
+            'bus_name': b.get('route_name') or b.get('bus_number'),
+            'operator': 'APSRTC' if 'AP' in (b.get('bus_number') or '') else 'TGSRTC',
+            'service_type': b.get('bus_type', 'Standard'),
+            'status': b.get('status', 'Active'),
+            'route_id': b.get('route_number'),
+            'route_name': route_name,
+            'source': src,
+            'destination': dst
+        })
+
+    # 1. Check Supabase via client
     sb = database.get_supabase()
     if sb:
         try:
-            # Check all buses to handle both exact and space-insensitive matches (e.g. 'AP 16 Z 2209' vs 'AP16Z2209')
             res = sb.table('buses').select('*').execute()
             if res and res.data:
                 for b in res.data:
                     b_no = (b.get('bus_number') or '').strip()
                     if b_no.upper() == cleaned_no.upper() or b_no.replace(' ', '').upper() == normalized_target:
-                        route_name = b.get('route_name') or ''
-                        parts = [p.strip() for p in route_name.split('-')] if '-' in route_name else [route_name, '']
-                        src = parts[0] if len(parts) >= 1 else ''
-                        dst = parts[1] if len(parts) >= 2 else ''
-                        return jsonify({
-                            'bus_id': b.get('id'),
-                            'bus_number': b.get('bus_number'),
-                            'bus_name': b.get('route_name') or b.get('bus_number'),
-                            'operator': 'APSRTC' if 'AP' in (b.get('bus_number') or '') else 'TGSRTC',
-                            'service_type': b.get('bus_type', 'Standard'),
-                            'status': b.get('status', 'Active'),
-                            'route_id': b.get('route_number'),
-                            'route_name': route_name,
-                            'source': src,
-                            'destination': dst
-                        })
+                        return format_bus_response(b)
         except Exception as sb_err:
-            print("Supabase get_bus_by_number notice:", sb_err)
+            print("Supabase client get_bus_by_number notice:", sb_err)
 
-    # 2. Fallback to SQLite
+    # 2. Check Supabase via Direct REST API (100% reliable on serverless)
+    try:
+        url = f"{database.SUPABASE_URL}/rest/v1/buses?select=*"
+        headers = {
+            'apikey': database.SUPABASE_KEY,
+            'Authorization': f'Bearer {database.SUPABASE_KEY}',
+            'Content-Type': 'application/json'
+        }
+        r = requests.get(url, headers=headers, timeout=5)
+        if r.status_code == 200:
+            for b in r.json():
+                b_no = (b.get('bus_number') or '').strip()
+                if b_no.upper() == cleaned_no.upper() or b_no.replace(' ', '').upper() == normalized_target:
+                    return format_bus_response(b)
+    except Exception as rest_err:
+        print("Supabase REST get_bus_by_number notice:", rest_err)
+
+    # 3. Fallback to SQLite
     try:
         conn = get_db()
         buses = conn.execute('''
