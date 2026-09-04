@@ -742,16 +742,21 @@ def api_health():
     sb = database.get_supabase()
     sb_connected = False
     sb_buses = 0
+    err_msg = None
     if sb:
         try:
-            r = sb.table('buses').select('id', count='exact').execute()
+            r = sb.table('buses').select('*').execute()
             sb_buses = len(r.data) if r and r.data else 0
             sb_connected = True
         except Exception as e:
-            print("Health check Supabase notice:", e)
+            err_msg = f"{type(e).__name__}: {str(e)}"
     return jsonify({
         'status': 'ok',
         'supabase_connected': sb_connected,
+        'create_client_exists': database.create_client is not None,
+        'supabase_client_exists': sb is not None,
+        'supabase_key_length': len(database.SUPABASE_KEY) if database.SUPABASE_KEY else 0,
+        'supabase_error': err_msg,
         'supabase_buses': sb_buses
     })
 
