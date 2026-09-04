@@ -737,50 +737,73 @@ def driver_dashboard():
     driver_name = session.get('driver_name', session.get('user_name', 'Driver'))
     return render_template('driver_dashboard.html', driver_name=driver_name, trip=trip)
 
+@app.route('/api/health')
+def api_health():
+    sb = database.get_supabase()
+    sb_connected = False
+    sb_buses = 0
+    if sb:
+        try:
+            r = sb.table('buses').select('id', count='exact').execute()
+            sb_buses = len(r.data) if r and r.data else 0
+            sb_connected = True
+        except Exception as e:
+            print("Health check Supabase notice:", e)
+    return jsonify({
+        'status': 'ok',
+        'supabase_connected': sb_connected,
+        'supabase_buses': sb_buses
+    })
+
 @app.route('/api/bus/by-number/<bus_number>', methods=['GET'])
 def get_bus_by_number(bus_number):
     cleaned_no = bus_number.strip()
+    normalized_target = cleaned_no.replace(' ', '').upper()
 
     # 1. First check Supabase cloud database
     sb = database.get_supabase()
     if sb:
         try:
-            res = sb.table('buses').select('*').ilike('bus_number', cleaned_no).maybe_single().execute()
+            # Check all buses to handle both exact and space-insensitive matches (e.g. 'AP 16 Z 2209' vs 'AP16Z2209')
+            res = sb.table('buses').select('*').execute()
             if res and res.data:
-                b = res.data
-                route_name = b.get('route_name') or ''
-                parts = [p.strip() for p in route_name.split('-')] if '-' in route_name else [route_name, '']
-                src = parts[0] if len(parts) >= 1 else ''
-                dst = parts[1] if len(parts) >= 2 else ''
-                return jsonify({
-                    'bus_id': b.get('id'),
-                    'bus_number': b.get('bus_number'),
-                    'bus_name': b.get('route_name') or b.get('bus_number'),
-                    'operator': 'APSRTC' if 'AP' in (b.get('bus_number') or '') else 'TGSRTC',
-                    'service_type': b.get('bus_type', 'Standard'),
-                    'status': b.get('status', 'Active'),
-                    'route_id': b.get('route_number'),
-                    'route_name': route_name,
-                    'source': src,
-                    'destination': dst
-                })
+                for b in res.data:
+                    b_no = (b.get('bus_number') or '').strip()
+                    if b_no.upper() == cleaned_no.upper() or b_no.replace(' ', '').upper() == normalized_target:
+                        route_name = b.get('route_name') or ''
+                        parts = [p.strip() for p in route_name.split('-')] if '-' in route_name else [route_name, '']
+                        src = parts[0] if len(parts) >= 1 else ''
+                        dst = parts[1] if len(parts) >= 2 else ''
+                        return jsonify({
+                            'bus_id': b.get('id'),
+                            'bus_number': b.get('bus_number'),
+                            'bus_name': b.get('route_name') or b.get('bus_number'),
+                            'operator': 'APSRTC' if 'AP' in (b.get('bus_number') or '') else 'TGSRTC',
+                            'service_type': b.get('bus_type', 'Standard'),
+                            'status': b.get('status', 'Active'),
+                            'route_id': b.get('route_number'),
+                            'route_name': route_name,
+                            'source': src,
+                            'destination': dst
+                        })
         except Exception as sb_err:
             print("Supabase get_bus_by_number notice:", sb_err)
 
     # 2. Fallback to SQLite
     try:
         conn = get_db()
-        bus = conn.execute('''
+        buses = conn.execute('''
             SELECT b.id as bus_id, b.bus_number, b.bus_name, b.operator, b.service_type, b.status, 
                    r.id as route_id, r.route_name, r.source, r.destination 
             FROM buses b 
-            LEFT JOIN routes r ON b.route_id = r.id 
-            WHERE b.bus_number=? COLLATE NOCASE
-        ''', (cleaned_no,)).fetchone()
+            LEFT JOIN routes r ON b.route_id = r.id
+        ''').fetchall()
         conn.close()
         
-        if bus:
-            return jsonify(dict(bus))
+        for bus in buses:
+            b_no = (bus['bus_number'] or '').strip()
+            if b_no.upper() == cleaned_no.upper() or b_no.replace(' ', '').upper() == normalized_target:
+                return jsonify(dict(bus))
     except Exception as db_err:
         print("SQLite get_bus_by_number notice:", db_err)
 

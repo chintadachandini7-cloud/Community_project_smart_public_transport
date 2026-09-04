@@ -42,10 +42,10 @@ def get_db_path():
     
     if is_serverless or is_readonly:
         tmp_db = os.path.join('/tmp', DB_NAME)
-        if not os.path.exists(tmp_db):
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            src_db = os.path.join(base_dir, DB_NAME)
-            if os.path.exists(src_db):
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        src_db = os.path.join(base_dir, DB_NAME)
+        if os.path.exists(src_db):
+            if not os.path.exists(tmp_db) or (os.path.getsize(tmp_db) != os.path.getsize(src_db)):
                 try:
                     shutil.copy2(src_db, tmp_db)
                 except Exception as e:
