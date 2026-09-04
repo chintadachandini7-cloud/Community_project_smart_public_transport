@@ -954,7 +954,7 @@
             document.getElementById('panel-title').textContent = config.title;
             document.getElementById('panel-desc').textContent = config.desc;
 
-            const roleName = role === 'admin' ? 'Administrator' : capitalize(role);
+            const roleName = role === 'admin' ? 'Administrator' : (role === 'driver' ? 'Driver (Chandini)' : capitalize(role));
             const demoBtnLabel = document.getElementById('demo-btn-label');
             if (demoBtnLabel) {
                 demoBtnLabel.textContent = `1-Click Test Login as ${roleName}`;

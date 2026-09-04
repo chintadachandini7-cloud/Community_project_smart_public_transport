@@ -83,8 +83,12 @@ def set_session():
     session['user_id'] = user_id
 
     if role == 'driver':
-        session['driver_id'] = user_id
-        session['driver_name'] = name
+        if 'chandini' in (email or '').lower() or 'chandini' in (name or '').lower():
+            session['driver_id'] = 'd2000000-0000-0000-0000-000000000001'
+            session['driver_name'] = 'Chandini'
+        else:
+            session['driver_id'] = user_id
+            session['driver_name'] = name
     elif role == 'conductor':
         session['conductor_id'] = user_id
         session['conductor_name'] = name
@@ -130,7 +134,7 @@ def auth_google():
     if demo_mode:
         demo_identities = {
             'passenger': {'email': 'demo_passenger@example.com', 'name': 'Demo Passenger'},
-            'driver': {'email': 'demo_driver@example.com', 'name': 'Ramesh Kumar'},
+            'driver': {'email': 'chintadachandini7@gmail.com', 'name': 'Chandini'},
             'conductor': {'email': 'demo_conductor@example.com', 'name': 'Srikanth Babu'},
             'admin': {'email': ADMIN_EMAILS[0], 'name': 'Admin User'},
         }
@@ -162,8 +166,13 @@ def auth_google():
             driver = None
             if sb:
                 try:
-                    r = sb.table('drivers').select('*').limit(1).execute()
-                    driver = r.data[0] if r.data else None
+                    # Look up Chandini driver record in Supabase
+                    r = sb.table('drivers').select('*').or_("driver_name.ilike.%Chandini%,id.eq.d2000000-0000-0000-0000-000000000001").limit(1).execute()
+                    if r and r.data:
+                        driver = r.data[0]
+                    else:
+                        r2 = sb.table('drivers').select('*').limit(1).execute()
+                        driver = r2.data[0] if (r2 and r2.data) else None
                     sync_profile(sb, email, name, 'driver')
                 except Exception as sb_err:
                     print("Supabase driver lookup notice:", sb_err)
@@ -171,18 +180,20 @@ def auth_google():
             if not driver:
                 try:
                     conn = get_db()
-                    driver = conn.execute("SELECT * FROM drivers LIMIT 1").fetchone()
+                    driver = conn.execute("SELECT * FROM drivers WHERE name LIKE '%Chandini%' OR email=? LIMIT 1", (email,)).fetchone()
+                    if not driver:
+                        driver = conn.execute("SELECT * FROM drivers LIMIT 1").fetchone()
                     conn.close()
                 except Exception as db_err:
                     print("Local driver lookup fallback notice:", db_err)
             
-            d_id = driver['id'] if driver else str(uuid.uuid4())
-            d_name = driver.get('driver_name', driver.get('name', name)) if isinstance(driver, dict) else (driver['name'] if driver and 'name' in driver.keys() else name)
+            d_id = driver['id'] if driver else 'd2000000-0000-0000-0000-000000000001'
+            d_name = driver.get('driver_name', driver.get('name', 'Chandini')) if isinstance(driver, dict) else (driver['name'] if driver and 'name' in driver.keys() else 'Chandini')
             session['driver_id'] = str(d_id)
             session['driver_name'] = str(d_name)
             session['user_role'] = 'driver'
             session['user_email'] = email
-            session['user_name'] = name
+            session['user_name'] = str(d_name)
             return jsonify({'success': True, 'redirect': '/driver/dashboard'})
         
         elif role == 'conductor':
@@ -972,12 +983,26 @@ def start_trip():
             if sb_bus and sb_bus.data:
                 actual_bus_id = sb_bus.data['id']
                 sb.table('buses').update({'status': 'Active'}).eq('id', actual_bus_id).execute()
-                sb.table('bus_assignments').upsert({
-                    'bus_id': actual_bus_id,
-                    'driver_id': str(driver_id),
-                    'status': 'Active'
-                }, on_conflict='bus_id').execute()
-                trip_id = actual_bus_id
+                
+                # Update existing assignment or insert new one with valid conductor_id
+                existing_assign = sb.table('bus_assignments').select('id').or_(f"bus_id.eq.{actual_bus_id},driver_id.eq.{driver_id}").maybe_single().execute()
+                if existing_assign and existing_assign.data:
+                    sb.table('bus_assignments').update({
+                        'bus_id': actual_bus_id,
+                        'driver_id': str(driver_id),
+                        'status': 'Active'
+                    }).eq('id', existing_assign.data['id']).execute()
+                    trip_id = existing_assign.data['id']
+                else:
+                    new_assign = sb.table('bus_assignments').insert({
+                        'bus_id': actual_bus_id,
+                        'driver_id': str(driver_id),
+                        'conductor_id': 'c1000000-0000-0000-0000-000000000001',
+                        'shift': 'Full Day',
+                        'assigned_date': datetime.now().strftime('%Y-%m-%d'),
+                        'status': 'Active'
+                    }).execute()
+                    trip_id = new_assign.data[0]['id'] if (new_assign and new_assign.data) else actual_bus_id
         except Exception as sb_err:
             print("Supabase start_trip notice:", sb_err)
             
@@ -1014,7 +1039,10 @@ def end_trip():
     sb = database.get_supabase()
     if sb and driver_id:
         try:
-            sb.table('bus_assignments').update({'status': 'Completed'}).eq('driver_id', str(driver_id)).execute()
+            if trip_id and len(str(trip_id)) == 36 and '-' in str(trip_id):
+                sb.table('bus_assignments').update({'status': 'Completed'}).eq('id', str(trip_id)).execute()
+            else:
+                sb.table('bus_assignments').update({'status': 'Completed'}).eq('driver_id', str(driver_id)).execute()
         except Exception as sb_err:
             print("Supabase end_trip notice:", sb_err)
             
@@ -1050,31 +1078,53 @@ def update_location():
     
     # 1. Update live locations in Supabase (Cloud First)
     sb = database.get_supabase()
-    if sb:
+    sb_bus_id = None
+    if len(str(bus_id)) == 36 and '-' in str(bus_id):
+        sb_bus_id = str(bus_id)
+    elif sb:
         try:
-            sb_bus_id = None
-            if len(str(bus_id)) == 36 and '-' in str(bus_id):
-                sb_bus_id = str(bus_id)
-            else:
-                sb_bus = sb.table('buses').select('id').or_(f"id.eq.{bus_id},bus_number.eq.{bus_id}").maybe_single().execute()
-                sb_bus_id = sb_bus.data.get('id') if sb_bus and sb_bus.data else None
-                
-            if sb_bus_id:
-                sb.table('bus_locations').upsert({
+            sb_bus = sb.table('buses').select('id').or_(f"id.eq.{bus_id},bus_number.eq.{bus_id}").maybe_single().execute()
+            sb_bus_id = sb_bus.data.get('id') if sb_bus and sb_bus.data else None
+        except Exception:
+            pass
+
+    if sb and sb_bus_id:
+        try:
+            sb.table('bus_locations').upsert({
+                'bus_id': sb_bus_id,
+                'latitude': float(lat),
+                'longitude': float(lon),
+                'speed': float(speed or 0),
+                'updated_at': datetime.now().isoformat()
+            }, on_conflict='bus_id').execute()
+        except Exception as sb_err:
+            try:
+                # Direct REST fallback
+                url = f"{database.SUPABASE_URL}/rest/v1/bus_locations?on_conflict=bus_id"
+                headers = {
+                    'apikey': database.SUPABASE_KEY,
+                    'Authorization': f'Bearer {database.SUPABASE_KEY}',
+                    'Content-Type': 'application/json',
+                    'Prefer': 'resolution=merge-duplicates'
+                }
+                requests.post(url, headers=headers, json={
                     'bus_id': sb_bus_id,
                     'latitude': float(lat),
                     'longitude': float(lon),
                     'speed': float(speed or 0),
                     'updated_at': datetime.now().isoformat()
-                }, on_conflict='bus_id').execute()
-        except Exception as sb_err:
-            print("Supabase bus_locations update notice:", sb_err)
+                }, timeout=5)
+            except Exception as rest_err:
+                print("Supabase bus_locations direct REST notice:", rest_err)
             
     # 2. Local SQLite update (safe fallback)
     try:
         conn = get_db()
         conn.execute("INSERT INTO live_locations (trip_id, bus_id, latitude, longitude, accuracy) VALUES (?, ?, ?, ?, ?)",
                      (trip_id, bus_id, lat, lon, acc))
+        conn.execute("UPDATE buses SET current_latitude=?, current_longitude=?, status='Active Trip', gps_source='Real' WHERE id=? OR bus_number=?",
+                     (lat, lon, bus_id, str(bus_id)))
+        conn.commit()
                      
         bus_row = conn.execute("SELECT bus_number, route_id, next_stop_id FROM buses WHERE id=? OR bus_number=?", (bus_id, str(bus_id))).fetchone()
         bus = dict(bus_row) if bus_row else None
