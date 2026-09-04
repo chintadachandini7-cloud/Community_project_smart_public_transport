@@ -389,7 +389,18 @@ def delete_route(id):
 def manage_stops():
     conn = get_db()
     if request.method == 'GET':
-        stops = conn.execute('SELECT s.*, r.route_name FROM stops s LEFT JOIN routes r ON s.route_id = r.id ORDER BY s.route_id, s.stop_order').fetchall()
+        route_id = request.args.get('route_id', type=int)
+        limit = request.args.get('limit', type=int)
+        fetch_all = request.args.get('all', '').lower() in ('true', '1')
+
+        if route_id:
+            stops = conn.execute('SELECT s.*, r.route_name FROM stops s LEFT JOIN routes r ON s.route_id = r.id WHERE s.route_id=? ORDER BY s.stop_order', (route_id,)).fetchall()
+        elif fetch_all:
+            stops = conn.execute('SELECT s.*, r.route_name FROM stops s LEFT JOIN routes r ON s.route_id = r.id ORDER BY s.route_id, s.stop_order').fetchall()
+        elif limit:
+            stops = conn.execute('SELECT s.*, r.route_name FROM stops s LEFT JOIN routes r ON s.route_id = r.id ORDER BY s.route_id, s.stop_order LIMIT ?', (limit,)).fetchall()
+        else:
+            stops = conn.execute('SELECT s.*, r.route_name FROM stops s LEFT JOIN routes r ON s.route_id = r.id ORDER BY s.route_id, s.stop_order LIMIT 100').fetchall()
         conn.close()
         return jsonify([dict(s) for s in stops])
     else:
@@ -404,10 +415,18 @@ def manage_stops():
         conn.close()
         return jsonify({'success': True})
 
-@app.route('/api/stops/<int:id>', methods=['PUT', 'DELETE'])
+@app.route('/api/stops/<int:id>', methods=['GET', 'PUT', 'DELETE'])
 def manage_stop(id):
     conn = get_db()
-    if request.method == 'PUT':
+    if request.method == 'GET':
+        # Treat <id> as a route_id and return ordered stops for that route
+        stops = conn.execute(
+            'SELECT s.*, r.route_name FROM stops s LEFT JOIN routes r ON s.route_id = r.id WHERE s.route_id=? ORDER BY s.stop_order',
+            (id,)
+        ).fetchall()
+        conn.close()
+        return jsonify([dict(s) for s in stops])
+    elif request.method == 'PUT':
         data = request.json
         err = validate_stop_data(data, conn)
         if err:
@@ -432,14 +451,62 @@ def manage_buses():
             try:
                 res = sb.table('admin_bus_overview').select('*').execute()
                 if res.data:
+                    # Build route_name -> SQLite route_id + source/dest lookup for Leaflet stop fetching
+                    route_id_lookup = {}
+                    route_detail_lookup = {}
+                    try:
+                        lconn = get_db()
+                        local_routes = lconn.execute('SELECT id, route_name, source, destination FROM routes').fetchall()
+                        for lr in local_routes:
+                            route_id_lookup[lr['route_name']] = lr['id']
+                            route_detail_lookup[lr['route_name']] = {'source': lr['source'], 'destination': lr['destination']}
+                        lconn.close()
+                    except Exception:
+                        pass
+
                     mapped = []
                     for b in res.data:
+                        # Resolve route_id from local SQLite by matching route_name
+                        route_name = b.get('route_name') or ''
+                        local_route_id = route_id_lookup.get(route_name)
+                        route_detail = route_detail_lookup.get(route_name, {})
+                        # Also try partial match: "SOURCE - DESTINATION"
+                        if not local_route_id:
+                            for rn, rid in route_id_lookup.items():
+                                if route_name and route_name in rn:
+                                    local_route_id = rid
+                                    route_detail = route_detail_lookup.get(rn, {})
+                                    break
+                        # Tokenized match if still not found
+                        if not local_route_id and route_name and '-' in route_name:
+                            parts = [p.strip().upper() for p in route_name.split('-') if p.strip()]
+                            if len(parts) == 2:
+                                for rn, detail in route_detail_lookup.items():
+                                    s_up = detail.get('source', '').upper()
+                                    d_up = detail.get('destination', '').upper()
+                                    if (parts[0] in s_up or s_up in parts[0]) and (parts[1] in d_up or d_up in parts[1]):
+                                        local_route_id = route_id_lookup.get(rn)
+                                        route_detail = detail
+                                        break
+
+                        # Fallback source/destination from route_name if still empty
+                        resolved_source = route_detail.get('source', '')
+                        resolved_dest = route_detail.get('destination', '')
+                        if not resolved_source and '-' in route_name:
+                            name_parts = [p.strip() for p in route_name.split('-') if p.strip()]
+                            if len(name_parts) >= 2:
+                                resolved_source = name_parts[0]
+                                resolved_dest = name_parts[1]
+
                         mapped.append({
                             'id': b.get('bus_id'),
                             'bus_number': b.get('bus_number'),
                             'bus_name': b.get('route_name') or b.get('bus_number'),
                             'route_name': b.get('route_name'),
                             'route_number': b.get('route_number'),
+                            'route_id': local_route_id,
+                            'source': resolved_source,
+                            'destination': resolved_dest,
                             'operator': 'APSRTC' if 'AP' in (b.get('bus_number') or '') else 'TGSRTC',
                             'service_type': b.get('bus_type', 'Standard'),
                             'capacity': b.get('capacity', 40),
@@ -463,7 +530,7 @@ def manage_buses():
                 print("Supabase bus fetch fallback to local:", e)
                 
         conn = get_db()
-        buses = conn.execute('SELECT b.*, r.route_name FROM buses b LEFT JOIN routes r ON b.route_id = r.id').fetchall()
+        buses = conn.execute('SELECT b.*, r.route_name, r.source, r.destination FROM buses b LEFT JOIN routes r ON b.route_id = r.id').fetchall()
         conn.close()
         return jsonify([dict(b) for b in buses])
     else:

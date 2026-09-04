@@ -140,7 +140,7 @@ function renderBusList() {
         const serviceColor = getServiceColor(bus.service_type);
 
         return `
-        <div class="bus-result-card" onclick="selectBus(${bus.id})">
+        <div class="bus-result-card" onclick="selectBus('${bus.id}')">
             <div class="flex items-center justify-between mb-2">
                 <div class="flex items-center gap-2">
                     <span class="px-2 py-0.5 rounded text-[13px] font-bold font-body" style="background:${serviceColor.bg};color:${serviceColor.text};border:1px solid ${serviceColor.border}">
@@ -180,7 +180,7 @@ function getServiceColor(type) {
 // BUS SELECTION & TRACKING
 // ============================================================
 function selectBus(busId) {
-    const bus = allBuses.find(b => b.id === busId);
+    const bus = allBuses.find(b => String(b.id) === String(busId));
     if (!bus) return;
     selectedBus = bus;
 

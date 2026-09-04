@@ -37,28 +37,32 @@ async function loadRoutes() {
     try {
         const routes = await apiCall('/api/routes');
         const tbody = document.querySelector('#routes-table tbody');
-        tbody.innerHTML = '';
         
         const stopSelect = document.getElementById('stop_route_id');
         const busSelect = document.getElementById('bus_route_id');
-        stopSelect.innerHTML = '<option value="">Select Route</option>';
-        busSelect.innerHTML = '<option value="">Select Route</option>';
+        const stopOptions = ['<option value="">Select Route</option>'];
+        const busOptions = ['<option value="">Select Route</option>'];
 
         routes.forEach(r => {
-            tbody.innerHTML += `
-                <tr>
-                    <td>${r.id}</td><td>${r.route_name}</td><td>${r.source}</td><td>${r.destination}</td>
-                    <td>${r.operator || ''}</td><td>${r.service_type || ''}</td>
-                    <td>${getBadge(r.data_source)}</td>
-                    <td>${getVerifyBadge(r)}</td>
-                    <td>
-                        <button onclick="editRoute(${r.id}, '${r.route_name}', '${r.source}', '${r.destination}', '${r.operator}', '${r.service_type}', '${r.data_source}')">Edit</button>
-                        <button onclick="deleteRoute(${r.id})">Delete</button>
-                    </td>
-                </tr>`;
-            stopSelect.innerHTML += `<option value="${r.id}">${r.route_name}</option>`;
-            busSelect.innerHTML += `<option value="${r.id}">${r.route_name}</option>`;
+            const opt = `<option value="${r.id}">${r.route_name}</option>`;
+            stopOptions.push(opt);
+            busOptions.push(opt);
         });
+        stopSelect.innerHTML = stopOptions.join('');
+        busSelect.innerHTML = busOptions.join('');
+
+        const displayRoutes = routes.slice(0, 100);
+        tbody.innerHTML = displayRoutes.map(r => `
+            <tr>
+                <td>${r.id}</td><td>${r.route_name}</td><td>${r.source}</td><td>${r.destination}</td>
+                <td>${r.operator || ''}</td><td>${r.service_type || ''}</td>
+                <td>${getBadge(r.data_source)}</td>
+                <td>${getVerifyBadge(r)}</td>
+                <td>
+                    <button onclick="editRoute(${r.id}, '${(r.route_name||'').replace(/'/g, "\\'")}', '${(r.source||'').replace(/'/g, "\\'")}', '${(r.destination||'').replace(/'/g, "\\'")}', '${r.operator||''}', '${r.service_type||''}', '${r.data_source||''}')">Edit</button>
+                    <button onclick="deleteRoute(${r.id})">Delete</button>
+                </td>
+            </tr>`).join('');
     } catch(e) { console.error(e); }
 }
 
@@ -95,25 +99,23 @@ window.resetRouteForm = function() { document.getElementById('route-form').reset
 window.deleteRoute = async function(id) { if(confirm('Are you sure?')) { await apiCall(`/api/routes/${id}`, 'DELETE'); loadRoutes(); } }
 
 // --- Stops ---
-async function loadStops() {
+async function loadStops(routeId = null) {
     try {
-        const stops = await apiCall('/api/stops');
+        const url = routeId ? `/api/stops?route_id=${routeId}` : '/api/stops?limit=100';
+        const stops = await apiCall(url);
         const tbody = document.querySelector('#stops-table tbody');
-        tbody.innerHTML = '';
-        stops.forEach(s => {
-            tbody.innerHTML += `
-                <tr>
-                    <td>${s.id}</td><td>${s.route_name || 'N/A'}</td><td>${s.stop_name}</td>
-                    <td>${s.latitude}</td><td>${s.longitude}</td><td>${s.stop_order}</td><td>${s.area_type || ''}</td>
-                    <td>${s.scheduled_arrival_time || '--'}</td>
-                    <td>${getBadge(s.data_source)}</td>
-                    <td>${getVerifyBadge(s)}</td>
-                    <td>
-                        <button onclick="editStop(${s.id}, ${s.route_id}, '${s.stop_name}', ${s.latitude}, ${s.longitude}, ${s.stop_order}, '${s.area_type}', '${s.scheduled_arrival_time}', '${s.data_source}')">Edit</button>
-                        <button onclick="deleteStop(${s.id})">Delete</button>
-                    </td>
-                </tr>`;
-        });
+        tbody.innerHTML = stops.map(s => `
+            <tr>
+                <td>${s.id}</td><td>${s.route_name || 'N/A'}</td><td>${s.stop_name}</td>
+                <td>${s.latitude}</td><td>${s.longitude}</td><td>${s.stop_order}</td><td>${s.area_type || ''}</td>
+                <td>${s.scheduled_arrival_time || '--'}</td>
+                <td>${getBadge(s.data_source)}</td>
+                <td>${getVerifyBadge(s)}</td>
+                <td>
+                    <button onclick="editStop(${s.id}, ${s.route_id}, '${(s.stop_name||'').replace(/'/g, "\\'")}', ${s.latitude}, ${s.longitude}, ${s.stop_order}, '${s.area_type||''}', '${s.scheduled_arrival_time||''}', '${s.data_source||''}')">Edit</button>
+                    <button onclick="deleteStop(${s.id})">Delete</button>
+                </td>
+            </tr>`).join('');
     } catch(e) { console.error(e); }
 }
 
@@ -158,21 +160,18 @@ async function loadBuses() {
     try {
         const buses = await apiCall('/api/buses');
         const tbody = document.querySelector('#buses-table tbody');
-        tbody.innerHTML = '';
-        buses.forEach(b => {
-            tbody.innerHTML += `
-                <tr>
-                    <td>${b.id}</td><td>${b.bus_number}</td><td>${b.bus_name}</td><td>${b.route_name || 'N/A'}</td>
-                    <td>${b.operator || ''}</td><td>${b.service_type || ''}</td>
-                    <td>${b.current_latitude}</td><td>${b.current_longitude}</td><td>${b.status}</td>
-                    <td>${getBadge(b.data_source)}</td>
-                    <td>${getVerifyBadge(b)}</td>
-                    <td>
-                        <button onclick="editBus(${b.id}, '${b.bus_number}', '${b.bus_name}', ${b.route_id}, ${b.current_latitude}, ${b.current_longitude}, '${b.status}', '${b.operator}', '${b.service_type}', '${b.data_source}')">Edit</button>
-                        <button onclick="deleteBus(${b.id})">Delete</button>
-                    </td>
-                </tr>`;
-        });
+        tbody.innerHTML = buses.map(b => `
+            <tr>
+                <td>${b.id}</td><td>${b.bus_number}</td><td>${b.bus_name}</td><td>${b.route_name || 'N/A'}</td>
+                <td>${b.operator || ''}</td><td>${b.service_type || ''}</td>
+                <td>${b.current_latitude}</td><td>${b.current_longitude}</td><td>${b.status}</td>
+                <td>${getBadge(b.data_source)}</td>
+                <td>${getVerifyBadge(b)}</td>
+                <td>
+                    <button onclick="editBus('${b.id}', '${b.bus_number}', '${(b.bus_name||'').replace(/'/g, "\\'")}', ${b.route_id || 'null'}, ${b.current_latitude}, ${b.current_longitude}, '${b.status}', '${b.operator||''}', '${b.service_type||''}', '${b.data_source||''}')">Edit</button>
+                    <button onclick="deleteBus('${b.id}')">Delete</button>
+                </td>
+            </tr>`).join('');
     } catch(e) { console.error(e); }
 }
 
