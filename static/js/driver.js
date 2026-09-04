@@ -17,13 +17,14 @@ function selectFleetBus(busNo) {
 }
 
 async function lookupBus() {
-    const busNo = document.getElementById('bus_number_input').value.trim();
-    if(!busNo) return;
+    const rawBusNo = document.getElementById('bus_number_input').value.trim();
+    if(!rawBusNo) return;
     
     document.getElementById('search-error').style.display = 'none';
+    const cleanBusNo = rawBusNo.replace(/\s+/g, '');
     
     try {
-        const res = await fetch(`/api/bus/by-number/${encodeURIComponent(busNo)}`);
+        const res = await fetch(`/api/bus/by-number/${encodeURIComponent(cleanBusNo)}`);
         const data = await res.json();
         
         if(res.ok) {

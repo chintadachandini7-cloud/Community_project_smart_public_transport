@@ -783,10 +783,11 @@ def api_health():
         'supabase_buses': sb_buses
     })
 
-@app.route('/api/bus/by-number/<bus_number>', methods=['GET'])
+@app.route('/api/bus/by-number/<path:bus_number>', methods=['GET'])
 def get_bus_by_number(bus_number):
-    cleaned_no = bus_number.strip()
-    normalized_target = cleaned_no.replace(' ', '').upper()
+    import urllib.parse
+    cleaned_no = urllib.parse.unquote(bus_number).strip()
+    normalized_target = cleaned_no.replace(' ', '').replace('%20', '').upper()
 
     def format_bus_response(b):
         route_name = b.get('route_name') or ''
