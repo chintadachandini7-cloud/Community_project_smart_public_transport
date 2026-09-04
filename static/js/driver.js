@@ -8,6 +8,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
+function selectFleetBus(busNo) {
+    const input = document.getElementById('bus_number_input');
+    if (input) {
+        input.value = busNo;
+        lookupBus();
+    }
+}
+
 async function lookupBus() {
     const busNo = document.getElementById('bus_number_input').value.trim();
     if(!busNo) return;

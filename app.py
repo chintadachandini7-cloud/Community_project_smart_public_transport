@@ -890,107 +890,113 @@ def update_location():
     if not all([trip_id, bus_id, lat is not None, lon is not None]):
         return jsonify({'error': 'Missing data'}), 400
     
-    # 1. Update live locations in Supabase
-    sb = database.get_supabase()
-    if sb:
-        try:
-            sb.table('bus_locations').upsert({
-                'bus_id': str(bus_id),
-                'latitude': float(lat),
-                'longitude': float(lon),
-                'speed': float(speed or 0),
-                'updated_at': datetime.now().isoformat()
-            }).execute()
-        except Exception as sb_err:
-            print("Supabase bus_locations update notice:", sb_err)
-        
     conn = get_db()
-    # Log the location
-    conn.execute("INSERT INTO live_locations (trip_id, bus_id, latitude, longitude, accuracy) VALUES (?, ?, ?, ?, ?)",
-                 (trip_id, bus_id, lat, lon, acc))
-                 
-    # ---- ETA FOUNDATION & NEXT STOP CALCULATION ----
-    bus = conn.execute("SELECT route_id, next_stop_id FROM buses WHERE id=?", (bus_id,)).fetchone()
-    if bus and bus['route_id']:
-        stops = conn.execute("SELECT id, latitude, longitude, stop_order, stop_name, scheduled_arrival_time FROM stops WHERE route_id=? ORDER BY stop_order", (bus['route_id'],)).fetchall()
-        if stops:
-            # Simple heuristic: find the closest stop that hasn't been passed
-            # For this foundation, we just find the absolute closest stop. 
-            # If the closest stop is < 500m (approx 0.005 degrees), we assume arrived and target the next one.
-            closest_stop = stops[0]
-            min_dist = float('inf')
-            
-            for s in stops:
-                dist = calculate_distance(lat, lon, s['latitude'], s['longitude'])
-                if dist < min_dist:
-                    min_dist = dist
-                    closest_stop = s
-                    
-            next_stop_id = closest_stop['id']
-            
-            # Delay Calculation Logic
-            delay_status = 'ON TIME'
-            delay_minutes = 0
-            now = datetime.now()
-            
-            # Identify the actual target stop object
-            target_stop = closest_stop
-            arrived = False
-            
-            # If we are very close to the closest stop, target the next one in sequence
-            if min_dist < 0.5: 
-                arrived = True
-                curr_idx = stops.index(closest_stop)
-                if curr_idx + 1 < len(stops):
-                    target_stop = stops[curr_idx + 1]
-                    next_stop_id = target_stop['id']
-            
-            # 1. Delay detection for the target stop
-            sched_str = target_stop.get('scheduled_arrival_time')
-            if sched_str:
-                sched_dt = datetime.strptime(f"{now.strftime('%Y-%m-%d')} {sched_str}", '%Y-%m-%d %H:%M:%S')
-                if now > sched_dt:
-                    delay_status = 'DELAYED'
-                    delay_minutes = int((now - sched_dt).total_seconds() / 60)
-                    
-                    # Create/Update notification
-                    existing_alert = conn.execute("SELECT id FROM service_updates WHERE trip_id=? AND stop_id=? AND status='Active'", (trip_id, next_stop_id)).fetchone()
-                    if not existing_alert:
-                        b_info = conn.execute("SELECT bus_number, route_id FROM buses WHERE id=?", (bus_id,)).fetchone()
-                        r_info = conn.execute("SELECT route_name FROM routes WHERE id=?", (b_info['route_id'],)).fetchone()
-                        msg = f"Next Stop: {target_stop['stop_name']}. Scheduled: {sched_dt.strftime('%I:%M %p')}. Expected: {now.strftime('%I:%M %p')}."
-                        conn.execute("INSERT INTO service_updates (title, message, status, trip_id, stop_id) VALUES (?, ?, 'Active', ?, ?)", 
-                                     (f"🔴 {b_info['bus_number']} delayed by {delay_minutes} minutes.", msg, trip_id, next_stop_id))
-            
-            # 2. Arrival Logic (Record true ATA & Resolve alert)
-            if arrived:
-                # Record ATA in arrivals
-                ata_str = now.strftime('%I:%M %p')
-                # Calculate exact delay for the arrived stop
-                arr_sched_str = closest_stop.get('scheduled_arrival_time')
-                arr_delay_mins = 0
-                if arr_sched_str:
-                    arr_sched_dt = datetime.strptime(f"{now.strftime('%Y-%m-%d')} {arr_sched_str}", '%Y-%m-%d %H:%M:%S')
-                    if now > arr_sched_dt:
-                        arr_delay_mins = int((now - arr_sched_dt).total_seconds() / 60)
-                
-                conn.execute("INSERT INTO arrivals (bus_id, stop_id, ata, delay_minutes) VALUES (?, ?, ?, ?)", 
-                             (bus_id, closest_stop['id'], ata_str, arr_delay_mins))
-                
-                # Resolve the delay notification for the ARRIVED stop
-                conn.execute("UPDATE service_updates SET status='Resolved' WHERE trip_id=? AND stop_id=? AND status='Active'", 
-                             (trip_id, closest_stop['id']))
+    try:
+        # Log the location locally
+        conn.execute("INSERT INTO live_locations (trip_id, bus_id, latitude, longitude, accuracy) VALUES (?, ?, ?, ?, ?)",
+                     (trip_id, bus_id, lat, lon, acc))
+                     
+        bus_row = conn.execute("SELECT bus_number, route_id, next_stop_id FROM buses WHERE id=?", (bus_id,)).fetchone()
+        bus = dict(bus_row) if bus_row else None
 
-            # Update bus current location, next stop, and delay state
-            conn.execute("UPDATE buses SET current_latitude=?, current_longitude=?, next_stop_id=?, delay_status=?, delay_minutes=? WHERE id=?", 
-                         (lat, lon, next_stop_id, delay_status, delay_minutes, bus_id))
+        # 1. Update live locations in Supabase
+        sb = database.get_supabase()
+        if sb and bus:
+            try:
+                # Resolve Supabase UUID for the bus
+                sb_bus = sb.table('buses').select('id').eq('bus_number', bus['bus_number']).maybe_single().execute()
+                sb_bus_id = sb_bus.data.get('id') if sb_bus and sb_bus.data else None
+                if sb_bus_id:
+                    sb.table('bus_locations').upsert({
+                        'bus_id': sb_bus_id,
+                        'latitude': float(lat),
+                        'longitude': float(lon),
+                        'speed': float(speed or 0),
+                        'updated_at': datetime.now().isoformat()
+                    }, on_conflict='bus_id').execute()
+            except Exception as sb_err:
+                print("Supabase bus_locations update notice:", sb_err)
+                      
+        # ---- ETA FOUNDATION & NEXT STOP CALCULATION ----
+        if bus and bus['route_id']:
+            raw_stops = conn.execute("SELECT id, latitude, longitude, stop_order, stop_name, scheduled_arrival_time FROM stops WHERE route_id=? ORDER BY stop_order", (bus['route_id'],)).fetchall()
+            stops = [dict(s) for s in raw_stops]
+            if stops:
+                # Simple heuristic: find the closest stop that hasn't been passed
+                closest_stop = stops[0]
+                min_dist = float('inf')
+                
+                for s in stops:
+                    dist = calculate_distance(lat, lon, s['latitude'], s['longitude'])
+                    if dist < min_dist:
+                        min_dist = dist
+                        closest_stop = s
+                        
+                next_stop_id = closest_stop['id']
+                
+                # Delay Calculation Logic
+                delay_status = 'ON TIME'
+                delay_minutes = 0
+                now = datetime.now()
+                
+                # Identify the actual target stop object
+                target_stop = closest_stop
+                arrived = False
+                
+                # If we are very close to the closest stop, target the next one in sequence
+                if min_dist < 0.5: 
+                    arrived = True
+                    curr_idx = stops.index(closest_stop)
+                    if curr_idx + 1 < len(stops):
+                        target_stop = stops[curr_idx + 1]
+                        next_stop_id = target_stop['id']
+                
+                # 1. Delay detection for the target stop
+                sched_str = target_stop.get('scheduled_arrival_time')
+                if sched_str:
+                    sched_dt = datetime.strptime(f"{now.strftime('%Y-%m-%d')} {sched_str}", '%Y-%m-%d %H:%M:%S')
+                    if now > sched_dt:
+                        delay_status = 'DELAYED'
+                        delay_minutes = int((now - sched_dt).total_seconds() / 60)
+                        
+                        # Create/Update notification
+                        existing_alert = conn.execute("SELECT id FROM service_updates WHERE trip_id=? AND stop_id=? AND status='Active'", (trip_id, next_stop_id)).fetchone()
+                        if not existing_alert:
+                            b_info = conn.execute("SELECT bus_number, route_id FROM buses WHERE id=?", (bus_id,)).fetchone()
+                            msg = f"Next Stop: {target_stop['stop_name']}. Scheduled: {sched_dt.strftime('%I:%M %p')}. Expected: {now.strftime('%I:%M %p')}."
+                            conn.execute("INSERT INTO service_updates (title, message, status, trip_id, stop_id) VALUES (?, ?, 'Active', ?, ?)", 
+                                         (f"🔴 {b_info['bus_number']} delayed by {delay_minutes} minutes.", msg, trip_id, next_stop_id))
+                
+                # 2. Arrival Logic (Record true ATA & Resolve alert)
+                if arrived:
+                    # Record ATA in arrivals
+                    ata_str = now.strftime('%I:%M %p')
+                    # Calculate exact delay for the arrived stop
+                    arr_sched_str = closest_stop.get('scheduled_arrival_time')
+                    arr_delay_mins = 0
+                    if arr_sched_str:
+                        arr_sched_dt = datetime.strptime(f"{now.strftime('%Y-%m-%d')} {arr_sched_str}", '%Y-%m-%d %H:%M:%S')
+                        if now > arr_sched_dt:
+                            arr_delay_mins = int((now - arr_sched_dt).total_seconds() / 60)
+                    
+                    conn.execute("INSERT INTO arrivals (bus_id, stop_id, ata, delay_minutes) VALUES (?, ?, ?, ?)", 
+                                 (bus_id, closest_stop['id'], ata_str, arr_delay_mins))
+                    
+                    # Resolve the delay notification for the ARRIVED stop
+                    conn.execute("UPDATE service_updates SET status='Resolved' WHERE trip_id=? AND stop_id=? AND status='Active'", 
+                                 (trip_id, closest_stop['id']))
+
+                # Update bus current location, next stop, and delay state
+                conn.execute("UPDATE buses SET current_latitude=?, current_longitude=?, next_stop_id=?, delay_status=?, delay_minutes=? WHERE id=?", 
+                             (lat, lon, next_stop_id, delay_status, delay_minutes, bus_id))
+            else:
+                conn.execute("UPDATE buses SET current_latitude=?, current_longitude=? WHERE id=?", (lat, lon, bus_id))
         else:
             conn.execute("UPDATE buses SET current_latitude=?, current_longitude=? WHERE id=?", (lat, lon, bus_id))
-    else:
-        conn.execute("UPDATE buses SET current_latitude=?, current_longitude=? WHERE id=?", (lat, lon, bus_id))
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+    finally:
+        conn.close()
     
     return jsonify({'message': 'Location updated'})
 
