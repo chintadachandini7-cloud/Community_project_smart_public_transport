@@ -700,34 +700,91 @@ def driver_dashboard():
         return redirect(url_for('login_page', role='driver', error='unauthorized'))
     
     trip = None
-    try:
-        conn = get_db()
-        driver_id = session.get('driver_id')
-        if driver_id:
-            trip = conn.execute("SELECT t.*, b.bus_number, b.bus_name, b.operator, b.service_type, r.route_name FROM trips t JOIN buses b ON t.bus_id = b.id LEFT JOIN routes r ON t.route_id = r.id WHERE t.driver_id=? AND t.status='Active'", (driver_id,)).fetchone()
-        conn.close()
-    except Exception as e:
-        print("Driver trip query notice:", e)
+    driver_id = session.get('driver_id')
+    
+    # 1. Try Supabase cloud database for active assignment
+    sb = database.get_supabase()
+    if sb and driver_id:
+        try:
+            assign = sb.table('bus_assignments').select('*, buses(*)').eq('driver_id', str(driver_id)).eq('status', 'Active').maybe_single().execute()
+            if assign and assign.data and assign.data.get('buses'):
+                b = assign.data['buses']
+                r_name = b.get('route_name') or ''
+                parts = [p.strip() for p in r_name.split('-')] if '-' in r_name else [r_name, '']
+                trip = {
+                    'id': assign.data.get('id'),
+                    'bus_id': b.get('id'),
+                    'bus_number': b.get('bus_number'),
+                    'bus_name': b.get('route_name') or b.get('bus_number'),
+                    'route_name': r_name,
+                    'operator': 'APSRTC' if 'AP' in (b.get('bus_number') or '') else 'TGSRTC',
+                    'service_type': b.get('bus_type', 'Standard'),
+                    'start_time': assign.data.get('created_at', 'Active')
+                }
+        except Exception as sb_err:
+            print("Supabase driver trip query notice:", sb_err)
+
+    # 2. Local fallback
+    if not trip:
+        try:
+            conn = get_db()
+            if driver_id:
+                trip = conn.execute("SELECT t.*, b.bus_number, b.bus_name, b.operator, b.service_type, r.route_name FROM trips t JOIN buses b ON t.bus_id = b.id LEFT JOIN routes r ON t.route_id = r.id WHERE t.driver_id=? AND t.status='Active'", (driver_id,)).fetchone()
+            conn.close()
+        except Exception as e:
+            print("Driver trip query notice:", e)
     
     driver_name = session.get('driver_name', session.get('user_name', 'Driver'))
     return render_template('driver_dashboard.html', driver_name=driver_name, trip=trip)
 
 @app.route('/api/bus/by-number/<bus_number>', methods=['GET'])
 def get_bus_by_number(bus_number):
-    conn = get_db()
-    bus = conn.execute('''
-        SELECT b.id as bus_id, b.bus_number, b.bus_name, b.operator, b.service_type, b.status, 
-               r.id as route_id, r.route_name, r.source, r.destination 
-        FROM buses b 
-        LEFT JOIN routes r ON b.route_id = r.id 
-        WHERE b.bus_number=? COLLATE NOCASE
-    ''', (bus_number,)).fetchone()
-    conn.close()
-    
-    if bus:
-        return jsonify(dict(bus))
-    else:
-        return jsonify({'error': 'Bus not found. Please check the bus number or contact the administrator.'}), 404
+    cleaned_no = bus_number.strip()
+
+    # 1. First check Supabase cloud database
+    sb = database.get_supabase()
+    if sb:
+        try:
+            res = sb.table('buses').select('*').ilike('bus_number', cleaned_no).maybe_single().execute()
+            if res and res.data:
+                b = res.data
+                route_name = b.get('route_name') or ''
+                parts = [p.strip() for p in route_name.split('-')] if '-' in route_name else [route_name, '']
+                src = parts[0] if len(parts) >= 1 else ''
+                dst = parts[1] if len(parts) >= 2 else ''
+                return jsonify({
+                    'bus_id': b.get('id'),
+                    'bus_number': b.get('bus_number'),
+                    'bus_name': b.get('route_name') or b.get('bus_number'),
+                    'operator': 'APSRTC' if 'AP' in (b.get('bus_number') or '') else 'TGSRTC',
+                    'service_type': b.get('bus_type', 'Standard'),
+                    'status': b.get('status', 'Active'),
+                    'route_id': b.get('route_number'),
+                    'route_name': route_name,
+                    'source': src,
+                    'destination': dst
+                })
+        except Exception as sb_err:
+            print("Supabase get_bus_by_number notice:", sb_err)
+
+    # 2. Fallback to SQLite
+    try:
+        conn = get_db()
+        bus = conn.execute('''
+            SELECT b.id as bus_id, b.bus_number, b.bus_name, b.operator, b.service_type, b.status, 
+                   r.id as route_id, r.route_name, r.source, r.destination 
+            FROM buses b 
+            LEFT JOIN routes r ON b.route_id = r.id 
+            WHERE b.bus_number=? COLLATE NOCASE
+        ''', (cleaned_no,)).fetchone()
+        conn.close()
+        
+        if bus:
+            return jsonify(dict(bus))
+    except Exception as db_err:
+        print("SQLite get_bus_by_number notice:", db_err)
+
+    return jsonify({'error': 'Bus not found. Please check the bus number or contact the administrator.'}), 404
 
 @app.route('/conductor/login', methods=['GET', 'POST'], strict_slashes=False)
 def conductor_login():
@@ -827,32 +884,51 @@ def start_trip():
         
     data = request.json or {}
     bus_id = data.get('bus_id')
+    driver_id = session.get('driver_id')
+    trip_id = None
     
-    conn = get_db()
-    bus = conn.execute("SELECT route_id FROM buses WHERE id=?", (bus_id,)).fetchone()
-    if not bus:
+    # 1. First update Supabase cloud database
+    sb = database.get_supabase()
+    if sb and bus_id:
+        try:
+            # Query bus in Supabase
+            sb_bus = None
+            if len(str(bus_id)) == 36 and '-' in str(bus_id):
+                sb_bus = sb.table('buses').select('*').eq('id', str(bus_id)).maybe_single().execute()
+            else:
+                sb_bus = sb.table('buses').select('*').eq('bus_number', str(bus_id)).maybe_single().execute()
+                
+            if sb_bus and sb_bus.data:
+                actual_bus_id = sb_bus.data['id']
+                sb.table('buses').update({'status': 'Active'}).eq('id', actual_bus_id).execute()
+                sb.table('bus_assignments').upsert({
+                    'bus_id': actual_bus_id,
+                    'driver_id': str(driver_id),
+                    'status': 'Active'
+                }, on_conflict='bus_id').execute()
+                trip_id = actual_bus_id
+        except Exception as sb_err:
+            print("Supabase start_trip notice:", sb_err)
+            
+    # 2. Local SQLite fallback (safe on Vercel)
+    try:
+        conn = get_db()
+        bus = conn.execute("SELECT id, route_id FROM buses WHERE id=? OR bus_number=?", (bus_id, str(bus_id))).fetchone()
+        if bus:
+            sqlite_bus_id = bus['id']
+            existing_trip = conn.execute("SELECT id FROM trips WHERE driver_id=? AND status='Active'", (driver_id,)).fetchone()
+            if not existing_trip:
+                cursor = conn.execute("INSERT INTO trips (bus_id, driver_id, route_id, status) VALUES (?, ?, ?, 'Active')", 
+                                     (sqlite_bus_id, driver_id, bus['route_id']))
+                if not trip_id:
+                    trip_id = cursor.lastrowid
+            conn.execute("UPDATE buses SET gps_source='Real', status='Active Trip' WHERE id=?", (sqlite_bus_id,))
+            conn.commit()
         conn.close()
-        return jsonify({'error': 'Bus not found'}), 404
+    except Exception as db_err:
+        print("SQLite start_trip notice:", db_err)
         
-    existing_driver_trip = conn.execute("SELECT id FROM trips WHERE driver_id=? AND status='Active'", (session['driver_id'],)).fetchone()
-    if existing_driver_trip:
-        conn.close()
-        return jsonify({'error': 'You already have an active trip. Please end it first.'}), 400
-        
-    existing_bus_trip = conn.execute("SELECT id FROM trips WHERE bus_id=? AND status='Active'", (bus_id,)).fetchone()
-    if existing_bus_trip:
-        conn.close()
-        return jsonify({'error': 'This bus is already on an active trip.'}), 400
-        
-    cursor = conn.execute("INSERT INTO trips (bus_id, driver_id, route_id, status) VALUES (?, ?, ?, 'Active')", (bus_id, session['driver_id'], bus['route_id']))
-    trip_id = cursor.lastrowid
-    
-    # Mark bus as LIVE
-    conn.execute("UPDATE buses SET gps_source='Real', status='Active Trip' WHERE id=?", (bus_id,))
-    conn.commit()
-    conn.close()
-    
-    return jsonify({'message': 'Trip started', 'trip_id': trip_id})
+    return jsonify({'message': 'Trip started', 'trip_id': trip_id or str(uuid.uuid4())})
 
 @app.route('/api/driver/end-trip', methods=['POST'])
 def end_trip():
@@ -861,16 +937,27 @@ def end_trip():
         
     data = request.json or {}
     trip_id = data.get('trip_id')
-    
-    conn = get_db()
-    conn.execute("UPDATE trips SET status='Completed', end_time=CURRENT_TIMESTAMP WHERE id=?", (trip_id,))
-    
-    trip = conn.execute("SELECT bus_id FROM trips WHERE id=?", (trip_id,)).fetchone()
-    if trip:
-        conn.execute("UPDATE buses SET gps_source='Simulated', status='Idle' WHERE id=?", (trip['bus_id'],))
-        
-    conn.commit()
-    conn.close()
+    driver_id = session.get('driver_id')
+
+    # 1. Update Supabase
+    sb = database.get_supabase()
+    if sb and driver_id:
+        try:
+            sb.table('bus_assignments').update({'status': 'Completed'}).eq('driver_id', str(driver_id)).execute()
+        except Exception as sb_err:
+            print("Supabase end_trip notice:", sb_err)
+            
+    # 2. Update SQLite
+    try:
+        conn = get_db()
+        conn.execute("UPDATE trips SET status='Completed', end_time=CURRENT_TIMESTAMP WHERE id=? OR driver_id=?", (trip_id, driver_id))
+        trip = conn.execute("SELECT bus_id FROM trips WHERE id=?", (trip_id,)).fetchone()
+        if trip:
+            conn.execute("UPDATE buses SET gps_source='Simulated', status='Idle' WHERE id=?", (trip['bus_id'],))
+        conn.commit()
+        conn.close()
+    except Exception as db_err:
+        print("SQLite end_trip notice:", db_err)
     
     return jsonify({'message': 'Trip ended'})
 
@@ -890,32 +977,36 @@ def update_location():
     if not all([trip_id, bus_id, lat is not None, lon is not None]):
         return jsonify({'error': 'Missing data'}), 400
     
-    conn = get_db()
+    # 1. Update live locations in Supabase (Cloud First)
+    sb = database.get_supabase()
+    if sb:
+        try:
+            sb_bus_id = None
+            if len(str(bus_id)) == 36 and '-' in str(bus_id):
+                sb_bus_id = str(bus_id)
+            else:
+                sb_bus = sb.table('buses').select('id').or_(f"id.eq.{bus_id},bus_number.eq.{bus_id}").maybe_single().execute()
+                sb_bus_id = sb_bus.data.get('id') if sb_bus and sb_bus.data else None
+                
+            if sb_bus_id:
+                sb.table('bus_locations').upsert({
+                    'bus_id': sb_bus_id,
+                    'latitude': float(lat),
+                    'longitude': float(lon),
+                    'speed': float(speed or 0),
+                    'updated_at': datetime.now().isoformat()
+                }, on_conflict='bus_id').execute()
+        except Exception as sb_err:
+            print("Supabase bus_locations update notice:", sb_err)
+            
+    # 2. Local SQLite update (safe fallback)
     try:
-        # Log the location locally
+        conn = get_db()
         conn.execute("INSERT INTO live_locations (trip_id, bus_id, latitude, longitude, accuracy) VALUES (?, ?, ?, ?, ?)",
                      (trip_id, bus_id, lat, lon, acc))
                      
-        bus_row = conn.execute("SELECT bus_number, route_id, next_stop_id FROM buses WHERE id=?", (bus_id,)).fetchone()
+        bus_row = conn.execute("SELECT bus_number, route_id, next_stop_id FROM buses WHERE id=? OR bus_number=?", (bus_id, str(bus_id))).fetchone()
         bus = dict(bus_row) if bus_row else None
-
-        # 1. Update live locations in Supabase
-        sb = database.get_supabase()
-        if sb and bus:
-            try:
-                # Resolve Supabase UUID for the bus
-                sb_bus = sb.table('buses').select('id').eq('bus_number', bus['bus_number']).maybe_single().execute()
-                sb_bus_id = sb_bus.data.get('id') if sb_bus and sb_bus.data else None
-                if sb_bus_id:
-                    sb.table('bus_locations').upsert({
-                        'bus_id': sb_bus_id,
-                        'latitude': float(lat),
-                        'longitude': float(lon),
-                        'speed': float(speed or 0),
-                        'updated_at': datetime.now().isoformat()
-                    }, on_conflict='bus_id').execute()
-            except Exception as sb_err:
-                print("Supabase bus_locations update notice:", sb_err)
                       
         # ---- ETA FOUNDATION & NEXT STOP CALCULATION ----
         if bus and bus['route_id']:
