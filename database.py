@@ -10,9 +10,9 @@ except ImportError:
     create_client = None
     Client = None
 
-# Supabase credentials from environment
+DEFAULT_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZxYmFjaGFpZ2ZjeGNqcWNiaXNhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0MTgyNzEsImV4cCI6MjEwMzk5NDI3MX0.aYAwfPH1ErmWMcfY2A9GTmYSbGoFDJRVZ74kwmim2PA'
 SUPABASE_URL = os.environ.get('SUPABASE_URL', 'https://vqbachaigfcxcjqcbisa.supabase.co')
-SUPABASE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', os.environ.get('SUPABASE_ANON_KEY', ''))
+SUPABASE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', os.environ.get('SUPABASE_ANON_KEY', DEFAULT_ANON_KEY))
 
 supabase_client = None
 if create_client and SUPABASE_URL and SUPABASE_KEY:
