@@ -2,6 +2,7 @@ import os
 import uuid
 import sqlite3
 from datetime import datetime
+import requests
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 import database
 
@@ -752,6 +753,8 @@ def api_health():
             err_msg = f"{type(e).__name__}: {str(e)}"
             
     rest_buses = 0
+    rest_status = None
+    rest_error = None
     try:
         url = f"{database.SUPABASE_URL}/rest/v1/buses?select=*"
         headers = {
@@ -760,15 +763,20 @@ def api_health():
             'Content-Type': 'application/json'
         }
         r = requests.get(url, headers=headers, timeout=5)
+        rest_status = r.status_code
         if r.status_code == 200:
             rest_buses = len(r.json())
+        else:
+            rest_error = r.text[:200]
     except Exception as re_err:
-        pass
+        rest_error = f"{type(re_err).__name__}: {str(re_err)}"
 
     return jsonify({
         'status': 'ok',
         'supabase_client_connected': sb_connected,
         'supabase_rest_buses': rest_buses,
+        'supabase_rest_status': rest_status,
+        'supabase_rest_error': rest_error,
         'supabase_client_exists': sb is not None,
         'supabase_key_length': len(database.SUPABASE_KEY) if database.SUPABASE_KEY else 0,
         'supabase_error': err_msg,

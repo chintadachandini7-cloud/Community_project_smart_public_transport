@@ -12,7 +12,7 @@ except ImportError:
 
 DEFAULT_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZxYmFjaGFpZ2ZjeGNqcWNiaXNhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4ODQxODI3MSwiZXhwIjoyMTAzOTk0MjcxfQ.7jErYQeys6T-Lb80gevexZvWser4a2cXfNHtx-kt3WU'
 SUPABASE_URL = os.environ.get('SUPABASE_URL', 'https://vqbachaigfcxcjqcbisa.supabase.co')
-SUPABASE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', os.environ.get('SUPABASE_ANON_KEY', DEFAULT_SERVICE_KEY))
+SUPABASE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY') or DEFAULT_SERVICE_KEY
 
 supabase_client = None
 
