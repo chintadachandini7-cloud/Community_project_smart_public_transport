@@ -12,6 +12,8 @@ let busMarkers = {};
 let stopMarkers = [];
 let routeLine = null;
 let refreshInterval = null;
+let progressMiniMap = null;
+let progressMiniMarker = null;
 
 // ============================================================
 // INITIALIZATION
@@ -45,11 +47,15 @@ function switchTab(tabName) {
     });
 
     // Initialize map on first visit to Live Radar tab
-    if (tabName === 'map' && !map) {
-        setTimeout(initMap, 100);
+    if (tabName === 'map') {
+        if (!map) {
+            setTimeout(initMap, 100);
+        } else {
+            setTimeout(() => map.invalidateSize(), 100);
+        }
     }
-    if (tabName === 'map' && map) {
-        setTimeout(() => map.invalidateSize(), 100);
+    if (tabName === 'progress' && progressMiniMap) {
+        setTimeout(() => progressMiniMap.invalidateSize(), 100);
     }
 }
 
@@ -63,12 +69,20 @@ function loadBuses() {
             allBuses = data;
             renderBusList();
             if (map) updateMapMarkers();
-            // Auto-refresh selected bus progress
+            renderMapPills();
+            // Auto-refresh selected bus progress & map
             if (selectedBus) {
-                const updated = allBuses.find(b => b.id === selectedBus.id);
+                const updated = allBuses.find(b => String(b.id) === String(selectedBus.id));
                 if (updated) {
                     selectedBus = updated;
                     updateProgressPanel();
+                    if (map && updated.current_latitude && updated.current_longitude) {
+                        if (busMarkers[updated.id]) {
+                            busMarkers[updated.id].setLatLng([updated.current_latitude, updated.current_longitude]);
+                        }
+                        const coordsEl = document.getElementById('map-bus-coords');
+                        if (coordsEl) coordsEl.textContent = `GPS: ${Number(updated.current_latitude).toFixed(5)}, ${Number(updated.current_longitude).toFixed(5)}`;
+                    }
                 }
             }
         })
@@ -138,9 +152,11 @@ function renderBusList() {
             : (isLive ? `<span class="px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-[11px] font-bold">ON TIME</span>` : '');
 
         const serviceColor = getServiceColor(bus.service_type);
+        const hasCoords = bus.current_latitude && bus.current_longitude;
+        const coordsText = hasCoords ? `${Number(bus.current_latitude).toFixed(4)}, ${Number(bus.current_longitude).toFixed(4)}` : '';
 
         return `
-        <div class="bus-result-card" onclick="selectBus('${bus.id}')">
+        <div class="bus-result-card" onclick="trackOnMap('${bus.id}')">
             <div class="flex items-center justify-between mb-2">
                 <div class="flex items-center gap-2">
                     <span class="px-2 py-0.5 rounded text-[13px] font-bold font-body" style="background:${serviceColor.bg};color:${serviceColor.text};border:1px solid ${serviceColor.border}">
@@ -151,17 +167,29 @@ function renderBusList() {
                     </span>
                 </div>
                 <div class="flex items-center gap-1">
-                    ${isLive ? '<span class="w-2 h-2 rounded-full bg-green-500 live-pulse"></span><span class="text-[11px] font-bold text-green-700">LIVE</span>' : '<span class="text-[11px] text-on-surface-variant">GPS Simulated</span>'}
+                    ${isLive ? '<span class="w-2.5 h-2.5 rounded-full bg-green-500 live-pulse"></span><span class="text-[11px] font-bold text-green-700">LIVE GPS</span>' : '<span class="text-[11px] text-on-surface-variant">GPS Simulated</span>'}
                 </div>
             </div>
-            <div class="flex items-center justify-between">
+            <div class="flex items-center justify-between mb-2">
                 <div class="min-w-0">
                     <p class="font-headline text-[14px] font-bold text-on-surface truncate">${bus.route_name || bus.bus_name || 'Unknown Route'}</p>
                     <p class="text-[12px] text-on-surface-variant">${bus.operator || '--'} • ${bus.source || ''} → ${bus.destination || ''}</p>
+                    ${bus.driver_name ? `<p class="text-[12px] text-primary font-bold mt-1 flex items-center gap-1"><span class="material-symbols-outlined text-[15px]">badge</span> Driver: ${bus.driver_name}</p>` : ''}
+                    ${hasCoords ? `<p class="text-[11px] text-on-surface-variant mt-0.5 font-mono flex items-center gap-1"><span class="material-symbols-outlined text-[13px]">location_on</span> ${coordsText}</p>` : ''}
                 </div>
                 <div class="flex flex-col items-end gap-1 shrink-0 ml-2">
                     ${delayBadge}
                 </div>
+            </div>
+            <div class="flex items-center gap-2 pt-2 border-t border-outline-variant/20 mt-2" onclick="event.stopPropagation()">
+                <button onclick="trackOnMap('${bus.id}')" class="flex-1 py-2 px-3 rounded-lg bg-primary text-white text-[12px] font-bold flex items-center justify-center gap-1 hover:bg-primary-container transition-colors shadow-sm">
+                    <span class="material-symbols-outlined text-[16px]">explore</span>
+                    View Live GPS Map
+                </button>
+                <button onclick="selectBus('${bus.id}')" class="flex-1 py-2 px-3 rounded-lg bg-surface-container text-on-surface text-[12px] font-bold flex items-center justify-center gap-1 hover:bg-surface-container-high transition-colors">
+                    <span class="material-symbols-outlined text-[16px]">timeline</span>
+                    Stop Timeline
+                </button>
             </div>
         </div>`;
     }).join('');
@@ -196,6 +224,40 @@ function trackBusFromMap() {
     }
 }
 
+function trackOnMap(busId) {
+    const bus = allBuses.find(b => String(b.id) === String(busId));
+    if (!bus) return;
+    selectedBus = bus;
+
+    switchTab('map');
+
+    setTimeout(() => {
+        if (!map) initMap();
+        if (map) {
+            map.invalidateSize();
+            if (bus.current_latitude && bus.current_longitude) {
+                map.setView([bus.current_latitude, bus.current_longitude], 15, { animate: true });
+                if (busMarkers[bus.id]) {
+                    busMarkers[bus.id].openPopup();
+                }
+            }
+            showMapBusCard(bus);
+            const recenterBtn = document.getElementById('map-recenter-btn');
+            if (recenterBtn) recenterBtn.style.display = 'flex';
+        }
+    }, 120);
+}
+
+function recenterSelectedBus() {
+    if (!selectedBus || !map) return;
+    if (selectedBus.current_latitude && selectedBus.current_longitude) {
+        map.setView([selectedBus.current_latitude, selectedBus.current_longitude], 15, { animate: true });
+        if (busMarkers[selectedBus.id]) {
+            busMarkers[selectedBus.id].openPopup();
+        }
+    }
+}
+
 function loadProgressData() {
     if (!selectedBus) return;
 
@@ -209,6 +271,13 @@ function loadProgressData() {
     document.getElementById('prog-operator').textContent = (selectedBus.operator || '--') + ' Verified';
     document.getElementById('prog-route-name').textContent = selectedBus.route_name || selectedBus.bus_name || '--';
 
+    const driverInfoEl = document.getElementById('prog-driver-info');
+    if (driverInfoEl) {
+        driverInfoEl.innerHTML = selectedBus.driver_name 
+            ? `<span class="material-symbols-outlined text-[15px]">person</span> Driver: <b class="underline">${selectedBus.driver_name}</b>`
+            : '';
+    }
+
     // Update delay status
     if (selectedBus.delay_status === 'DELAYED') {
         document.getElementById('prog-delay-status').textContent = 'DELAYED';
@@ -219,6 +288,8 @@ function loadProgressData() {
         document.getElementById('prog-delay-status').style.color = '#004d27';
         document.getElementById('prog-delay-detail').textContent = 'Running on schedule';
     }
+
+    renderProgressMiniMap();
 
     // Load stops for this bus's route
     if (selectedBus.route_id) {
@@ -235,6 +306,13 @@ function loadProgressData() {
 function updateProgressPanel() {
     if (!selectedBus) return;
 
+    const driverInfoEl = document.getElementById('prog-driver-info');
+    if (driverInfoEl) {
+        driverInfoEl.innerHTML = selectedBus.driver_name 
+            ? `<span class="material-symbols-outlined text-[15px]">person</span> Driver: <b class="underline">${selectedBus.driver_name}</b>`
+            : '';
+    }
+
     // Update delay status live
     if (selectedBus.delay_status === 'DELAYED') {
         document.getElementById('prog-delay-status').textContent = 'DELAYED';
@@ -246,6 +324,8 @@ function updateProgressPanel() {
         document.getElementById('prog-delay-detail').textContent = 'Running on schedule';
     }
 
+    renderProgressMiniMap();
+
     // Reload stops timeline
     if (selectedBus.route_id) {
         fetch('/api/stops/' + selectedBus.route_id)
@@ -255,6 +335,50 @@ function updateProgressPanel() {
                 updateMetrics(stops);
             })
             .catch(() => {});
+    }
+}
+
+function renderProgressMiniMap() {
+    if (!selectedBus || !selectedBus.current_latitude || !selectedBus.current_longitude) return;
+
+    const coordsEl = document.getElementById('prog-map-coords');
+    if (coordsEl) {
+        coordsEl.textContent = `${Number(selectedBus.current_latitude).toFixed(5)}, ${Number(selectedBus.current_longitude).toFixed(5)}`;
+    }
+
+    const lat = selectedBus.current_latitude;
+    const lng = selectedBus.current_longitude;
+
+    if (!progressMiniMap) {
+        const miniContainer = document.getElementById('progress-mini-map');
+        if (miniContainer) {
+            progressMiniMap = L.map('progress-mini-map').setView([lat, lng], 15);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap',
+                maxZoom: 19
+            }).addTo(progressMiniMap);
+
+            const icon = L.divIcon({
+                className: 'custom-bus-icon-mini',
+                html: `<div style="width:30px;height:30px;border-radius:50%;background:#16a34a;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.35);border:2px solid white;">
+                    <span style="color:white;font-size:16px;" class="material-symbols-outlined">directions_bus</span>
+                </div>`,
+                iconSize: [30, 30],
+                iconAnchor: [15, 15]
+            });
+
+            progressMiniMarker = L.marker([lat, lng], { icon })
+                .addTo(progressMiniMap)
+                .bindPopup(`<b>${selectedBus.bus_number}</b><br>Driver: ${selectedBus.driver_name || 'Active'}<br>Live GPS`)
+                .openPopup();
+        }
+    } else {
+        progressMiniMap.setView([lat, lng], 15);
+        if (progressMiniMarker) {
+            progressMiniMarker.setLatLng([lat, lng]);
+            progressMiniMarker.setPopupContent(`<b>${selectedBus.bus_number}</b><br>Driver: ${selectedBus.driver_name || 'Active'}<br>Live GPS`);
+        }
+        setTimeout(() => progressMiniMap.invalidateSize(), 100);
     }
 }
 
@@ -434,13 +558,52 @@ function updateMetrics(stops) {
 // LEAFLET MAP (Live Radar Tab)
 // ============================================================
 function initMap() {
-    map = L.map('live-map').setView([16.5062, 80.6480], 10);
+    let centerLat = 16.5062;
+    let centerLng = 80.6480;
+    let zoomLevel = 10;
+
+    if (selectedBus && selectedBus.current_latitude && selectedBus.current_longitude) {
+        centerLat = selectedBus.current_latitude;
+        centerLng = selectedBus.current_longitude;
+        zoomLevel = 15;
+    } else if (allBuses.length > 0) {
+        const liveBus = allBuses.find(b => b.gps_source === 'Real' || b.status === 'Active Trip') || allBuses[0];
+        if (liveBus && liveBus.current_latitude) {
+            centerLat = liveBus.current_latitude;
+            centerLng = liveBus.current_longitude;
+            zoomLevel = 14;
+        }
+    }
+
+    map = L.map('live-map').setView([centerLat, centerLng], zoomLevel);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
         maxZoom: 19
     }).addTo(map);
 
     updateMapMarkers();
+    renderMapPills();
+
+    if (selectedBus) {
+        showMapBusCard(selectedBus);
+    }
+}
+
+function renderMapPills() {
+    const container = document.getElementById('map-live-bus-pills');
+    if (!container) return;
+
+    container.innerHTML = allBuses.map(b => {
+        const isLive = b.gps_source === 'Real' || b.status === 'Active Trip';
+        const isSelected = selectedBus && String(selectedBus.id) === String(b.id);
+        const bg = isSelected ? 'bg-primary text-white border-primary shadow-sm' : (isLive ? 'bg-green-50 text-green-800 border-green-300' : 'bg-white/90 text-on-surface border-outline-variant/40');
+        const star = (b.bus_number || '').includes('00 C') ? '⭐ ' : '';
+
+        return `<button onclick="trackOnMap('${b.id}')" class="shrink-0 h-7 px-2.5 rounded-full text-[11px] font-bold border transition-all flex items-center gap-1 ${bg}">
+            ${isLive ? '<span class="w-1.5 h-1.5 rounded-full bg-green-500 live-pulse"></span>' : ''}
+            <span>${star}${b.bus_number}</span>
+        </button>`;
+    }).join('');
 }
 
 function updateMapMarkers() {
@@ -450,27 +613,49 @@ function updateMapMarkers() {
         if (!bus.current_latitude || !bus.current_longitude) return;
 
         const isLive = bus.gps_source === 'Real' || bus.status === 'Active Trip';
-        const color = isLive ? '#006837' : '#475569';
+        const isSelected = selectedBus && String(selectedBus.id) === String(bus.id);
+        const color = isLive ? '#16a34a' : '#475569';
+        const border = isSelected ? '3px solid #facc15' : '2px solid white';
+        const scale = isSelected ? 'transform:scale(1.2);' : '';
 
         const icon = L.divIcon({
             className: 'custom-bus-icon',
-            html: `<div style="width:28px;height:28px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.3);border:2px solid white;">
-                <span style="color:white;font-size:14px;" class="material-symbols-outlined">directions_bus</span>
+            html: `<div style="position:relative;width:32px;height:32px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;box-shadow:0 3px 8px rgba(0,0,0,0.35);border:${border};${scale}">
+                ${isLive ? '<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-60"></span>' : ''}
+                <span style="color:white;font-size:16px;z-index:2;" class="material-symbols-outlined">directions_bus</span>
             </div>`,
-            iconSize: [28, 28],
-            iconAnchor: [14, 14]
+            iconSize: [32, 32],
+            iconAnchor: [16, 16]
         });
+
+        const popupContent = `
+            <div style="font-family:sans-serif;padding:4px;min-width:170px;">
+                <div style="font-size:14px;font-weight:bold;color:#004d27;">${bus.bus_number}</div>
+                <div style="font-size:12px;color:#555;margin-bottom:4px;">${bus.route_name || bus.bus_name || ''}</div>
+                <div style="display:inline-block;padding:2px 6px;border-radius:4px;background:${isLive ? '#dcfce7' : '#f1f5f9'};color:${isLive ? '#15803d' : '#475569'};font-size:11px;font-weight:bold;margin-bottom:4px;">
+                    ${isLive ? '🟢 LIVE GPS STREAM' : 'GPS Simulated'}
+                </div>
+                ${bus.driver_name ? `<div style="font-size:11px;color:#1d4ed8;font-weight:bold;">Driver: ${bus.driver_name}</div>` : ''}
+                <div style="font-size:10px;color:#666;font-family:monospace;margin-top:2px;">
+                    GPS: ${Number(bus.current_latitude).toFixed(5)}, ${Number(bus.current_longitude).toFixed(5)}
+                </div>
+            </div>`;
 
         if (busMarkers[bus.id]) {
             busMarkers[bus.id].setLatLng([bus.current_latitude, bus.current_longitude]);
+            busMarkers[bus.id].setIcon(icon);
+            busMarkers[bus.id].setPopupContent(popupContent);
         } else {
             const marker = L.marker([bus.current_latitude, bus.current_longitude], { icon })
                 .addTo(map)
+                .bindPopup(popupContent)
                 .on('click', () => {
                     selectedBus = bus;
                     showMapBusCard(bus);
+                    const recenterBtn = document.getElementById('map-recenter-btn');
+                    if (recenterBtn) recenterBtn.style.display = 'flex';
                 });
-            marker.bindTooltip(`${bus.bus_number} — ${bus.route_name || bus.bus_name || ''}`, { direction: 'top', offset: [0, -16] });
+            marker.bindTooltip(`${bus.bus_number} (${bus.driver_name || bus.operator})`, { direction: 'top', offset: [0, -18] });
             busMarkers[bus.id] = marker;
         }
     });
@@ -482,8 +667,16 @@ function showMapBusCard(bus) {
     document.getElementById('map-bus-route').textContent = bus.route_name || bus.bus_name || '';
 
     const isLive = bus.gps_source === 'Real' || bus.status === 'Active Trip';
-    document.getElementById('map-bus-status').textContent = isLive ? 'LIVE' : 'Simulated';
+    document.getElementById('map-bus-status').textContent = isLive ? 'LIVE GPS' : 'Simulated';
     document.getElementById('map-bus-status-dot').style.background = isLive ? '#16a34a' : '#94a3b8';
+
+    const driverEl = document.getElementById('map-bus-driver');
+    if (driverEl) driverEl.textContent = bus.driver_name ? `Driver: ${bus.driver_name}` : '';
+
+    const coordsEl = document.getElementById('map-bus-coords');
+    if (coordsEl) {
+        coordsEl.textContent = bus.current_latitude ? `GPS: ${Number(bus.current_latitude).toFixed(5)}, ${Number(bus.current_longitude).toFixed(5)}` : '';
+    }
 
     document.getElementById('map-bus-next-stop').textContent = bus.next_stop_name || 'Loading...';
 
@@ -504,11 +697,16 @@ function drawRouteOnMap(stops, bus) {
     stopMarkers.forEach(m => map.removeLayer(m));
     stopMarkers = [];
 
-    if (!stops || stops.length === 0) return;
+    if (!stops || stops.length === 0) {
+        if (bus && bus.current_latitude && bus.current_longitude) {
+            map.setView([bus.current_latitude, bus.current_longitude], 15);
+        }
+        return;
+    }
 
     // Draw polyline through stops
     const coords = stops.map(s => [s.latitude, s.longitude]);
-    routeLine = L.polyline(coords, { color: '#006837', weight: 3, opacity: 0.7, dashArray: '8 4' }).addTo(map);
+    routeLine = L.polyline(coords, { color: '#006837', weight: 4, opacity: 0.8, dashArray: '8 5' }).addTo(map);
 
     // Add stop markers
     stops.forEach((stop, i) => {
@@ -530,8 +728,17 @@ function drawRouteOnMap(stops, bus) {
         stopMarkers.push(marker);
     });
 
-    // Fit map to route
-    map.fitBounds(routeLine.getBounds().pad(0.1));
+    // If bus has current GPS, ALWAYS include the bus in bounds or center on bus!
+    const bounds = routeLine.getBounds();
+    if (bus && bus.current_latitude && bus.current_longitude) {
+        bounds.extend([bus.current_latitude, bus.current_longitude]);
+    }
+    const distToFirst = (bus && bus.current_latitude) ? haversine(bus.current_latitude, bus.current_longitude, stops[0].latitude, stops[0].longitude) : 0;
+    if (distToFirst > 400 && bus && bus.current_latitude) {
+        map.setView([bus.current_latitude, bus.current_longitude], 15);
+    } else {
+        map.fitBounds(bounds.pad(0.15));
+    }
 }
 
 // ============================================================

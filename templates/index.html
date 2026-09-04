@@ -154,27 +154,46 @@
 
     <!-- TAB: Live Radar (OpenStreetMap) -->
     <div id="tab-map" class="tab-panel w-full relative" style="flex:1;">
+        <!-- Live Radar Top Action Bar -->
+        <div class="absolute top-3 left-3 right-3 z-[1000] flex items-center justify-between pointer-events-none">
+            <div class="flex items-center gap-1.5 overflow-x-auto pb-1 pointer-events-auto max-w-[80%]" id="map-live-bus-pills">
+                <!-- Dynamically populated live bus pills -->
+            </div>
+            <button id="map-recenter-btn" onclick="recenterSelectedBus()" class="pointer-events-auto h-9 px-3 rounded-full bg-white text-primary font-bold text-[12px] shadow-md border border-outline-variant/30 flex items-center gap-1 hover:bg-surface-container transition-colors" style="display:none;">
+                <span class="material-symbols-outlined text-[16px]">my_location</span>
+                <span>Center Bus</span>
+            </button>
+        </div>
+
         <div id="live-map"></div>
+
         <!-- Floating card on map for selected bus -->
         <div class="map-floating-card" id="map-bus-card" style="display:none;">
             <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
-                    <span class="material-symbols-outlined text-primary text-[20px]">directions_bus</span>
+                    <span class="material-symbols-outlined text-primary text-[22px]">directions_bus</span>
                     <div>
-                        <span class="font-headline text-[14px] font-bold" id="map-bus-number">--</span>
+                        <span class="font-headline text-[15px] font-bold" id="map-bus-number">--</span>
                         <span class="text-[12px] text-on-surface-variant ml-1" id="map-bus-route">--</span>
                     </div>
                 </div>
                 <div class="flex items-center gap-1">
                     <span class="w-2 h-2 rounded-full live-pulse" id="map-bus-status-dot" style="background:#16a34a;"></span>
-                    <span class="text-[11px] font-bold" id="map-bus-status">--</span>
+                    <span class="text-[11px] font-bold text-green-700" id="map-bus-status">--</span>
                 </div>
+            </div>
+            <div class="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-on-surface-variant">
+                <span id="map-bus-driver" class="font-semibold text-primary"></span>
+                <span id="map-bus-coords" class="font-mono text-[11px]"></span>
             </div>
             <div class="flex items-center justify-between mt-2 pt-2 border-t border-outline-variant/30">
                 <div class="text-[12px] text-on-surface-variant">
                     <span class="font-semibold text-on-surface" id="map-bus-next-stop">--</span> • Next Stop
                 </div>
-                <button class="h-8 px-3 rounded-lg bg-primary text-on-primary text-[12px] font-bold" onclick="trackBusFromMap()">Track Progress</button>
+                <div class="flex items-center gap-2">
+                    <button class="h-8 px-2.5 rounded-lg bg-surface-container text-on-surface text-[12px] font-bold" onclick="recenterSelectedBus()">Center</button>
+                    <button class="h-8 px-3 rounded-lg bg-primary text-on-primary text-[12px] font-bold" onclick="trackBusFromMap()">Timeline</button>
+                </div>
             </div>
         </div>
     </div>
@@ -203,6 +222,26 @@
                     </div>
                 </div>
                 <h1 class="font-headline text-[18px] font-bold text-on-primary truncate mt-1" id="prog-route-name">--</h1>
+                <div id="prog-driver-info" class="text-[12px] text-white/90 font-medium mt-0.5 flex items-center gap-1"></div>
+            </div>
+
+            <!-- Mini Live GPS Map Card -->
+            <div class="w-full bg-white rounded-xl p-3 shadow-sm border border-outline-variant/30 flex flex-col gap-2">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <span class="material-symbols-outlined text-primary text-[20px]">my_location</span>
+                        <span class="font-headline text-[14px] font-bold text-on-surface">Live GPS Position on Map</span>
+                    </div>
+                    <span class="px-2 py-0.5 rounded-full bg-green-100 text-green-800 text-[11px] font-bold" id="prog-map-badge">🟢 LIVE GPS</span>
+                </div>
+                <div id="progress-mini-map" style="width:100%;height:220px;border-radius:10px;z-index:1;"></div>
+                <div class="flex justify-between items-center text-[12px] text-on-surface-variant px-1">
+                    <span>Coordinates: <b id="prog-map-coords" class="text-on-surface font-mono">--</b></span>
+                    <button onclick="trackOnMap(selectedBus.id)" class="text-primary font-bold hover:underline flex items-center gap-0.5">
+                        <span>Full Radar</span>
+                        <span class="material-symbols-outlined text-[14px]">open_in_new</span>
+                    </button>
+                </div>
             </div>
 
             <!-- Telemetry Metrics -->
