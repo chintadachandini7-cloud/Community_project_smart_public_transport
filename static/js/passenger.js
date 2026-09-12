@@ -174,8 +174,8 @@ function renderBusList() {
             </div>
             <div class="flex items-center justify-between mb-2">
                 <div class="min-w-0">
-                    <p class="font-headline text-[14px] font-bold text-on-surface truncate">${bus.route_name || bus.bus_name || t('unknown_route','Unknown Route')}</p>
-                    <p class="text-[12px] text-on-surface-variant">${bus.operator || '--'} • ${bus.source || ''} → ${bus.destination || ''}</p>
+                    <p class="font-headline text-[14px] font-bold text-on-surface truncate">${tPlace(bus.route_name) || tPlace(bus.bus_name) || t('unknown_route','Unknown Route')}</p>
+                    <p class="text-[12px] text-on-surface-variant">${bus.operator || '--'} • ${tPlace(bus.source) || ''} → ${tPlace(bus.destination) || ''}</p>
                     ${bus.driver_name ? `<p class="text-[12px] text-primary font-bold mt-1 flex items-center gap-1"><span class="material-symbols-outlined text-[15px]">badge</span> ${t('driver_label','Driver')}: ${bus.driver_name}</p>` : ''}
                     ${hasCoords ? `<p class="text-[11px] text-on-surface-variant mt-0.5 font-mono flex items-center gap-1"><span class="material-symbols-outlined text-[13px]">location_on</span> ${coordsText}</p>` : ''}
                 </div>
@@ -271,7 +271,7 @@ function loadProgressData() {
     document.getElementById('prog-bus-code').textContent = selectedBus.bus_number || '--';
     document.getElementById('prog-service-type').textContent = selectedBus.service_type || t('standard','Standard');
     document.getElementById('prog-operator').textContent = (selectedBus.operator || '--') + ' ' + t('verified','Verified');
-    document.getElementById('prog-route-name').textContent = selectedBus.route_name || selectedBus.bus_name || '--';
+    document.getElementById('prog-route-name').textContent = tPlace(selectedBus.route_name) || tPlace(selectedBus.bus_name) || '--';
 
     const driverInfoEl = document.getElementById('prog-driver-info');
     if (driverInfoEl) {
@@ -440,7 +440,7 @@ function renderTimeline(stops) {
                 </div>
                 <div class="flex-1 flex items-baseline justify-between min-w-0">
                     <div class="flex flex-col min-w-0">
-                        <span class="text-[14px] font-semibold text-on-surface truncate">${stop.stop_name}</span>
+                        <span class="text-[14px] font-semibold text-on-surface truncate">${tPlace(stop.stop_name)}</span>
                         <span class="text-[12px] text-on-surface-variant">${stop.area_type || ''}</span>
                     </div>
                     <div class="flex flex-col items-end shrink-0 pl-2">
@@ -462,7 +462,7 @@ function renderTimeline(stops) {
                             <span class="w-2 h-2 rounded-full bg-primary-fixed animate-ping"></span>
                             <span class="text-[11px] font-bold text-primary-fixed uppercase tracking-wider">${t('live_position','Live Position')}</span>
                         </div>
-                        <span class="text-[12px] font-bold text-on-primary truncate">${distText} ${t('from_word','from')} ${stop.stop_name}</span>
+                        <span class="text-[12px] font-bold text-on-primary truncate">${distText} ${t('from_word','from')} ${tPlace(stop.stop_name)}</span>
                     </div>
                     <span class="px-2 py-0.5 rounded bg-white text-primary text-[13px] font-bold shrink-0">
                         ${estimateETA(dist)} ${t('eta_label','ETA')}
@@ -482,7 +482,7 @@ function renderTimeline(stops) {
                         <span class="text-[13px] font-bold text-tertiary-container">${stop.scheduled_arrival_time || '--'}</span>
                     </div>
                     <div class="flex items-baseline justify-between min-w-0">
-                        <span class="font-headline text-[16px] font-bold text-on-surface truncate">${stop.stop_name}</span>
+                        <span class="font-headline text-[16px] font-bold text-on-surface truncate">${tPlace(stop.stop_name)}</span>
                         <span class="text-[12px] font-bold text-tertiary shrink-0 pl-2">${distText}</span>
                     </div>
                 </div>
@@ -496,7 +496,7 @@ function renderTimeline(stops) {
                 </div>
                 <div class="flex-1 flex items-baseline justify-between min-w-0">
                     <div class="flex flex-col min-w-0">
-                        <span class="text-[14px] font-bold text-on-surface truncate">${stop.stop_name}</span>
+                        <span class="text-[14px] font-bold text-on-surface truncate">${tPlace(stop.stop_name)}</span>
                         <span class="text-[12px] text-on-surface-variant">${t('final_destination','Final Destination')}</span>
                     </div>
                     <div class="flex flex-col items-end shrink-0 pl-2">
@@ -512,7 +512,7 @@ function renderTimeline(stops) {
                 <div class="w-3.5 h-3.5 rounded-full bg-surface-container-highest shrink-0 mt-1 z-10 ring-4 ring-white"></div>
                 <div class="flex-1 flex items-baseline justify-between min-w-0">
                     <div class="flex flex-col min-w-0">
-                        <span class="text-[14px] font-semibold text-on-surface truncate">${stop.stop_name}</span>
+                        <span class="text-[14px] font-semibold text-on-surface truncate">${tPlace(stop.stop_name)}</span>
                         <span class="text-[12px] text-on-surface-variant">${stop.area_type || ''}</span>
                     </div>
                     <div class="flex flex-col items-end shrink-0 pl-2">
@@ -633,7 +633,7 @@ function updateMapMarkers() {
         const popupContent = `
             <div style="font-family:sans-serif;padding:4px;min-width:170px;">
                 <div style="font-size:14px;font-weight:bold;color:#004d27;">${bus.bus_number}</div>
-                <div style="font-size:12px;color:#555;margin-bottom:4px;">${bus.route_name || bus.bus_name || ''}</div>
+                <div style="font-size:12px;color:#555;margin-bottom:4px;">${tPlace(bus.route_name) || tPlace(bus.bus_name) || ''}</div>
                 <div style="display:inline-block;padding:2px 6px;border-radius:4px;background:${isLive ? '#dcfce7' : '#f1f5f9'};color:${isLive ? '#15803d' : '#475569'};font-size:11px;font-weight:bold;margin-bottom:4px;">
                     ${isLive ? '🟢 ' + t('live_gps_stream','LIVE GPS STREAM') : t('gps_simulated','GPS Simulated')}
                 </div>
@@ -665,8 +665,8 @@ function updateMapMarkers() {
 
 function showMapBusCard(bus) {
     document.getElementById('map-bus-card').style.display = 'block';
-    document.getElementById('map-bus-number').textContent = bus.bus_number || '--';
-    document.getElementById('map-bus-route').textContent = bus.route_name || bus.bus_name || '';
+    document.getElementById('map-bus-title').textContent = bus.bus_number;
+    document.getElementById('map-bus-route').textContent = tPlace(bus.route_name) || tPlace(bus.bus_name) || '';
 
     const isLive = bus.gps_source === 'Real' || bus.status === 'Active Trip';
     document.getElementById('map-bus-status').textContent = isLive ? t('live_gps','LIVE GPS') : t('gps_simulated','Simulated');
@@ -680,7 +680,7 @@ function showMapBusCard(bus) {
         coordsEl.textContent = bus.current_latitude ? `GPS: ${Number(bus.current_latitude).toFixed(5)}, ${Number(bus.current_longitude).toFixed(5)}` : '';
     }
 
-    document.getElementById('map-bus-next-stop').textContent = bus.next_stop_name || t('loading','Loading...');
+    document.getElementById('map-bus-next-stop').textContent = tPlace(bus.next_stop_name) || t('loading','Loading...');
 
     // Load stops and draw route on map
     if (bus.route_id) {
@@ -726,7 +726,7 @@ function drawRouteOnMap(stops, bus) {
 
         const marker = L.marker([stop.latitude, stop.longitude], { icon })
             .addTo(map)
-            .bindTooltip(`${stop.stop_name} (${t('stop_word','Stop')} ${stop.stop_order})`, { direction: 'top' });
+            .bindTooltip(`${tPlace(stop.stop_name)} (${t('stop_word','Stop')} ${stop.stop_order})`, { direction: 'top' });
         stopMarkers.push(marker);
     });
 

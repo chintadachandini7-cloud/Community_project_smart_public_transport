@@ -347,7 +347,63 @@ const TRANSLATIONS = {
     },
 };
 
+const PLACE_TRANSLATIONS = {
+    'VIJAYAWADA': { hi: 'विजयवाड़ा', te: 'విజయవాడ' },
+    'AMALAPURAM': { hi: 'अमलापुरम', te: 'అమలాపురం' },
+    'HYDERABAD': { hi: 'हैदराबाद', te: 'హైదరాబాద్' },
+    'TIRUPATHI': { hi: 'तिरुपति', te: 'తిరుపతి' },
+    'NELLORE': { hi: 'नेल्लोर', te: 'నెల్లూరు' },
+    'VSP MADDILAPALEM': { hi: 'विशाखापत्तनम मद्दिलापलेम', te: 'విశాఖపట్నం మద్దిలపాలెం' },
+    'VSP MADDILAPALEM CITY BUS STATION': { hi: 'विशाखापत्तनम मद्दिलापलेम सिटी बस स्टेशन', te: 'విశాఖపట్నం మద్దిలపాలెం సిటీ బస్ స్టేషన్' },
+    'CITY BUS STATION': { hi: 'सिटी बस स्टेशन', te: 'సిటీ బస్ స్టేషన్' },
+    'MEHDIPATNAM DEPOT': { hi: 'मेहदीपट्टनम डिपो', te: 'మెహదీపట్నం డిపో' },
+    'AUTONAGAR BUS STATION': { hi: 'ऑटोनगर बस स्टेशन', te: 'ఆటోనగర్ బస్ స్టేషన్' },
+    'SADASIVA KONA': { hi: 'सदाशिव कोना', te: 'సదాశివ కోన' },
+    'PUTTUR': { hi: 'पुत्तूर', te: 'పుత్తూరు' }
+};
+
 let currentLang = 'en';
+
+// Helper for passenger.js dynamic rendering
+function t(key, fallback) {
+    const dict = TRANSLATIONS[currentLang];
+    return dict[key] ?? TRANSLATIONS.en[key] ?? fallback;
+}
+
+// Helper to translate place/route names
+function tPlace(name) {
+    if (!name) return name;
+    if (currentLang === 'en') return name;
+
+    // Handle "SOURCE - DESTINATION" format
+    if (name.includes(' - ')) {
+        return name.split(' - ').map(p => tPlace(p.trim())).join(' - ');
+    }
+    // Handle "SOURCE -> DESTINATION" format
+    if (name.includes(' \u2192 ')) {
+        return name.split(' \u2192 ').map(p => tPlace(p.trim())).join(' \u2192 ');
+    }
+    if (name.includes(' -> ')) {
+        return name.split(' -> ').map(p => tPlace(p.trim())).join(' -> ');
+    }
+
+    // Direct translation
+    const upperName = name.toUpperCase();
+    if (PLACE_TRANSLATIONS[upperName] && PLACE_TRANSLATIONS[upperName][currentLang]) {
+        return PLACE_TRANSLATIONS[upperName][currentLang];
+    }
+    
+    // Partial translation (e.g. if the name contains a known city)
+    let translated = name;
+    for (const [eng, trans] of Object.entries(PLACE_TRANSLATIONS)) {
+        if (trans[currentLang]) {
+            // Use regex with word boundaries to avoid partial word replacement
+            const regex = new RegExp(`\\b${eng}\\b`, 'gi');
+            translated = translated.replace(regex, trans[currentLang]);
+        }
+    }
+    return translated;
+}
 
 /**
  * Apply translations to all static [data-i18n] elements, AND re-render
