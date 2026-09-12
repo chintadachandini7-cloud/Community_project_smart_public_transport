@@ -14,6 +14,8 @@ let routeLine = null;
 let refreshInterval = null;
 let progressMiniMap = null;
 let progressMiniMarker = null;
+let lastTripMatches = [];
+let placeSuggestTimer = null;
 
 // ============================================================
 // INITIALIZATION
@@ -802,4 +804,147 @@ function estimateETA(distKm) {
     if (minutes < 1) return '<1 min';
     if (minutes >= 60) return `${Math.floor(minutes/60)}h ${minutes%60}m`;
     return `${minutes} min`;
+}
+
+// ============================================================
+// TRIP PLANNER — Source & Destination -> live path ("where is my bus")
+// ============================================================
+function t(key, fallback) {
+    // Small i18n lookup helper local to this file, tolerant of i18n.js
+    // not having loaded yet.
+    try {
+        const dict = (typeof TRANSLATIONS !== 'undefined') ? (TRANSLATIONS[currentLang] || TRANSLATIONS.en) : null;
+        return (dict && dict[key]) || fallback;
+    } catch (e) {
+        return fallback;
+    }
+}
+
+function onPlaceInput(inputEl, datalistId) {
+    const query = inputEl.value.trim();
+    clearTimeout(placeSuggestTimer);
+    if (query.length < 2) return;
+    placeSuggestTimer = setTimeout(() => {
+        fetch(`/api/places/suggest?q=${encodeURIComponent(query)}`)
+            .then(r => r.json())
+            .then(names => {
+                const list = document.getElementById(datalistId);
+                if (!list) return;
+                list.innerHTML = names.map(n => `<option value="${n.replace(/"/g, '&quot;')}"></option>`).join('');
+            })
+            .catch(() => {});
+    }, 250);
+}
+
+function swapTripInputs() {
+    const src = document.getElementById('trip-source-input');
+    const dst = document.getElementById('trip-destination-input');
+    const tmp = src.value;
+    src.value = dst.value;
+    dst.value = tmp;
+}
+
+function planTrip() {
+    const source = document.getElementById('trip-source-input').value.trim();
+    const destination = document.getElementById('trip-destination-input').value.trim();
+    const resultsEl = document.getElementById('trip-results');
+
+    if (!source || !destination) {
+        resultsEl.innerHTML = `<p class="text-[12px] text-red-600 px-1 pt-1">${t('field_source', 'Source')} &amp; ${t('field_destination', 'Destination')} required.</p>`;
+        return;
+    }
+
+    resultsEl.innerHTML = `<p class="text-[12px] text-on-surface-variant px-1 pt-1 flex items-center gap-1.5">
+        <span class="material-symbols-outlined text-[15px] animate-spin">progress_activity</span> ${t('trip_searching', 'Searching routes…')}
+    </p>`;
+
+    fetch(`/api/trip/plan?source=${encodeURIComponent(source)}&destination=${encodeURIComponent(destination)}`)
+        .then(r => r.json())
+        .then(data => {
+            lastTripMatches = data.matches || [];
+            renderTripResults(lastTripMatches);
+        })
+        .catch(() => {
+            resultsEl.innerHTML = `<p class="text-[12px] text-red-600 px-1 pt-1">Network error. Please try again.</p>`;
+        });
+}
+
+function renderTripResults(matches) {
+    const resultsEl = document.getElementById('trip-results');
+    if (!matches || matches.length === 0) {
+        resultsEl.innerHTML = `<p class="text-[12px] text-on-surface-variant px-1 pt-1">${t('trip_no_results', 'No routes found between these two places yet.')}</p>`;
+        return;
+    }
+
+    resultsEl.innerHTML = matches.map((m, i) => {
+        const liveCount = (m.buses || []).filter(b => b.latitude && b.longitude).length;
+        const bestEta = (m.buses || [])
+            .map(b => b.eta_minutes)
+            .filter(v => v !== null && v !== undefined)
+            .sort((a, b) => a - b)[0];
+
+        return `<div class="border border-outline-variant/40 rounded-lg p-2.5 mt-2 bg-surface-container-low">
+            <div class="flex items-start justify-between gap-2">
+                <div class="min-w-0">
+                    <p class="text-[12.5px] font-bold text-on-surface truncate">${m.route_name || ('Route #' + m.route_id)}</p>
+                    <p class="text-[11px] text-on-surface-variant mt-0.5">
+                        <span data-i18n="boarding_at">${t('boarding_at', 'Board at')}</span> <b>${m.boarding_stop}</b> &rarr;
+                        <span data-i18n="alight_at">${t('alight_at', 'Alight at')}</span> <b>${m.alighting_stop}</b>
+                    </p>
+                    <p class="text-[11px] mt-1 ${liveCount > 0 ? 'text-green-700 font-semibold' : 'text-on-surface-variant'}">
+                        ${liveCount > 0
+                            ? `🟢 ${liveCount} ${t('live_buses_count', 'live bus(es) found')}${bestEta !== undefined ? ' • ETA ~' + bestEta + ' min' : ''}`
+                            : 'No live bus on this route right now'}
+                    </p>
+                </div>
+                <button onclick="viewTripOnMap(${i})" class="shrink-0 h-8 px-2.5 rounded-full bg-primary text-on-primary text-[11px] font-bold flex items-center gap-1">
+                    <span class="material-symbols-outlined text-[15px]">map</span> ${t('view_on_map', 'View on Map')}
+                </button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function viewTripOnMap(matchIndex) {
+    const match = lastTripMatches[matchIndex];
+    if (!match) return;
+
+    switchTab('map');
+
+    const drawIt = () => {
+        // Reuse the existing route-drawing logic; adapt field names to
+        // what drawRouteOnMap()/haversine() expect (latitude/longitude/stop_order/stop_name).
+        const stopsForDraw = (match.path || []).map(p => ({
+            latitude: p.lat, longitude: p.lng, stop_order: p.order, stop_name: p.name
+        }));
+
+        const liveBus = (match.buses || []).find(b => b.latitude && b.longitude);
+        const busForDraw = liveBus ? { current_latitude: liveBus.latitude, current_longitude: liveBus.longitude } : null;
+
+        drawRouteOnMap(stopsForDraw, busForDraw);
+
+        // Plot every live bus on this route with its own marker + ETA popup.
+        (match.buses || []).forEach(b => {
+            if (!b.latitude || !b.longitude) return;
+            const icon = L.divIcon({
+                className: 'trip-bus-icon',
+                html: `<div style="width:30px;height:30px;border-radius:50%;background:#2563EB;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 8px rgba(0,0,0,0.35);border:2px solid white;">
+                    <span style="color:white;font-size:15px;" class="material-symbols-outlined">directions_bus</span>
+                </div>`,
+                iconSize: [30, 30], iconAnchor: [15, 15]
+            });
+            L.marker([b.latitude, b.longitude], { icon }).addTo(map).bindPopup(
+                `<b>${b.bus_number}</b><br>${b.operator || ''} ${b.service_type || ''}<br>` +
+                (b.eta_minutes !== null && b.eta_minutes !== undefined
+                    ? `ETA to ${match.alighting_stop}: ~${b.eta_minutes} min (${b.distance_km} km)`
+                    : 'ETA unavailable')
+            );
+        });
+    };
+
+    if (!map) {
+        setTimeout(() => { initMap(); setTimeout(drawIt, 150); }, 150);
+    } else {
+        setTimeout(drawIt, 150);
+    }
 }

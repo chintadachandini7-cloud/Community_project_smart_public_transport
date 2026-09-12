@@ -687,9 +687,167 @@
                 padding: 28px 20px 22px;
             }
         }
+        /* ============================================================ */
+        /* UNIFIED LOGIN CARD — one form, every role                    */
+        /* ============================================================ */
+        .lang-switcher-wrap {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            z-index: 60;
+        }
+        .lang-switcher-wrap select {
+            font-family: 'Inter', sans-serif;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-main);
+            background: var(--surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: 9999px;
+            padding: 6px 12px;
+            cursor: pointer;
+            box-shadow: var(--shadow-card);
+        }
+
+        .unified-login-card {
+            width: 100%;
+            max-width: 420px;
+            background: var(--surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: 20px;
+            box-shadow: var(--shadow-card);
+            padding: 28px 26px 24px;
+            margin: 0 auto 28px;
+            text-align: center;
+        }
+        .unified-login-card h2 {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 20px;
+            font-weight: 800;
+            color: var(--text-main);
+            margin-bottom: 4px;
+        }
+        .unified-login-card .unified-sub {
+            font-size: 12.5px;
+            color: var(--text-muted);
+            margin-bottom: 18px;
+        }
+        .unified-field {
+            text-align: left;
+            margin-bottom: 12px;
+        }
+        .unified-field label {
+            display: block;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-main);
+            margin-bottom: 5px;
+        }
+        .unified-field input {
+            width: 100%;
+            height: 44px;
+            border-radius: 10px;
+            border: 1px solid var(--border-subtle);
+            background: #F8FAFC;
+            padding: 0 14px;
+            font-size: 14px;
+            font-family: 'Inter', sans-serif;
+            color: var(--text-main);
+            transition: border-color .15s ease;
+        }
+        .unified-field input:focus {
+            outline: none;
+            border-color: var(--role-passenger);
+            background: #fff;
+        }
+        .unified-submit-btn {
+            width: 100%;
+            height: 46px;
+            border-radius: 10px;
+            border: none;
+            background: var(--role-passenger);
+            color: #fff;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            margin-top: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: background .15s ease;
+        }
+        .unified-submit-btn:hover { background: #1D4ED8; }
+        .unified-submit-btn:disabled { opacity: .6; cursor: not-allowed; }
+        .unified-toggle-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 14px;
+            font-size: 12.5px;
+        }
+        .unified-toggle-row a {
+            color: var(--role-passenger);
+            font-weight: 700;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .unified-toggle-row a:hover { text-decoration: underline; }
+        .unified-msg {
+            font-size: 12.5px;
+            font-weight: 600;
+            border-radius: 8px;
+            padding: 8px 10px;
+            margin-bottom: 12px;
+            text-align: left;
+            display: none;
+        }
+        .unified-msg.show { display: block; }
+        .unified-msg.error { background: #FEF2F2; color: #991B1B; border: 1px solid #FCA5A5; }
+        .unified-msg.success { background: #F0FDF4; color: #166534; border: 1px solid #BBF7D0; }
+        .unified-demo-hint {
+            margin-top: 16px;
+            padding-top: 14px;
+            border-top: 1px dashed var(--border-subtle);
+            font-size: 11px;
+            color: var(--text-muted);
+            text-align: left;
+            line-height: 1.6;
+        }
+        .unified-demo-hint b { color: var(--text-main); }
+        .secondary-login-divider {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+            max-width: 420px;
+            margin: 0 auto 20px;
+            color: var(--text-muted);
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+        }
+        .secondary-login-divider::before,
+        .secondary-login-divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border-subtle);
+        }
+        #register-fields { display: none; }
     </style>
 </head>
 <body>
+
+    <!-- LANGUAGE SWITCHER -->
+    <div class="lang-switcher-wrap">
+        <select id="lang-switcher" onchange="setLanguage(this.value)" aria-label="Choose language">
+            <option value="en">English</option>
+            <option value="hi">हिंदी</option>
+            <option value="te">తెలుగు</option>
+        </select>
+    </div>
 
     <!-- Background Route & Grid Visuals -->
     <div class="bg-decorations">
@@ -722,10 +880,74 @@
             <p class="brand-tagline">Track buses, manage routes, and experience smarter public transportation across Andhra Pradesh & Telangana.</p>
         </header>
 
+        <!-- ============================================================ -->
+        <!-- UNIFIED LOGIN — one form for Passenger, Driver, Conductor,   -->
+        <!-- and Admin. The account itself decides the role & dashboard. -->
+        <!-- ============================================================ -->
+        <div class="unified-login-card">
+            <h2 data-i18n="unified_title">Sign in to Smart Transit</h2>
+            <p class="unified-sub" data-i18n="unified_sub">One login works for every role — Passenger, Driver, Conductor or Admin.</p>
+
+            <div class="unified-msg error" id="unified-error"></div>
+            <div class="unified-msg success" id="unified-success"></div>
+
+            <!-- LOGIN FORM -->
+            <form id="unified-login-form" onsubmit="return handleUnifiedLogin(event)">
+                <div class="unified-field">
+                    <label data-i18n="field_identifier">Email or Phone Number</label>
+                    <input type="text" id="unified-identifier" autocomplete="username" placeholder="you@example.com or 9000000001" required>
+                </div>
+                <div class="unified-field">
+                    <label data-i18n="field_password">Password</label>
+                    <input type="password" id="unified-password" autocomplete="current-password" placeholder="••••••••" required>
+                </div>
+                <button type="submit" class="unified-submit-btn" id="unified-submit-btn">
+                    <span id="unified-submit-label" data-i18n="btn_sign_in">Sign In</span>
+                </button>
+            </form>
+
+            <!-- REGISTER FORM (passengers only, hidden by default) -->
+            <form id="register-fields" onsubmit="return handleUnifiedRegister(event)">
+                <div class="unified-field">
+                    <label data-i18n="field_name">Full Name</label>
+                    <input type="text" id="reg-name" autocomplete="name" placeholder="Your name" required>
+                </div>
+                <div class="unified-field">
+                    <label data-i18n="field_email">Email</label>
+                    <input type="email" id="reg-email" autocomplete="email" placeholder="you@example.com" required>
+                </div>
+                <div class="unified-field">
+                    <label data-i18n="field_phone">Phone Number (optional)</label>
+                    <input type="tel" id="reg-phone" autocomplete="tel" placeholder="10-digit number">
+                </div>
+                <div class="unified-field">
+                    <label data-i18n="field_password">Password</label>
+                    <input type="password" id="reg-password" autocomplete="new-password" placeholder="At least 6 characters" required minlength="6">
+                </div>
+                <button type="submit" class="unified-submit-btn" id="register-submit-btn">
+                    <span data-i18n="btn_create_account">Create Passenger Account</span>
+                </button>
+            </form>
+
+            <div class="unified-toggle-row">
+                <span data-i18n="new_passenger_q">New passenger?</span>
+                <a id="toggle-register-link" onclick="toggleRegisterMode()" data-i18n="link_create_account">Create an account</a>
+            </div>
+
+            <div class="unified-demo-hint" data-i18n-html="demo_hint">
+                <b>Try it instantly</b> — Passenger: <b>passenger@demo.com / Passenger@123</b>.
+                Driver: <b>9000000001 / demo123</b>. Conductor: <b>0987654321 / password123</b>.
+                Admin: use the whitelisted admin email with <b>Admin@123</b>.
+            </div>
+        </div>
+
+        <div class="secondary-login-divider" data-i18n="or_google_divider">Or continue with Google, by role</div>
+
         <!-- Section Prompt (Shown in Role Selection View) -->
         <div class="section-prompt" id="section-prompt">
-            <span>Who are you?</span>
+            <span data-i18n="who_are_you">Who are you?</span>
         </div>
+
 
         <!-- 1. Four Role Cards Grid -->
         <div class="cards-grid" id="cards-grid">
@@ -736,16 +958,16 @@
                     <div class="card-icon-badge">
                         <span class="material-symbols-outlined">person</span>
                     </div>
-                    <h3 class="card-title">Passenger / User</h3>
-                    <p class="card-desc">Track buses, view routes, stops and estimated arrival times.</p>
+                    <h3 class="card-title" data-i18n="card_passenger_title">Passenger / User</h3>
+                    <p class="card-desc" data-i18n="card_passenger_desc">Track buses, view routes, stops and estimated arrival times.</p>
                     <span class="note-tag">
                         <span class="material-symbols-outlined" style="font-size:13px;">check_circle</span>
-                        No login required
+                        <span data-i18n="card_passenger_note">Browse without an account</span>
                     </span>
                 </div>
                 <!-- Navigates immediately to /user/dashboard without login -->
-                <a href="/user/dashboard" class="card-btn btn-passenger">
-                    Continue as User &rarr;
+                <a href="/user/dashboard" class="card-btn btn-passenger" data-i18n="card_passenger_btn">
+                    Continue as Guest &rarr;
                 </a>
             </div>
 
@@ -755,10 +977,10 @@
                     <div class="card-icon-badge">
                         <span class="material-symbols-outlined">sports_motorsports</span>
                     </div>
-                    <h3 class="card-title">Driver</h3>
-                    <p class="card-desc">Access assigned bus, route and trip information.</p>
+                    <h3 class="card-title" data-i18n="card_driver_title">Driver</h3>
+                    <p class="card-desc" data-i18n="card_driver_desc">Access assigned bus, route and trip information.</p>
                 </div>
-                <button type="button" class="card-btn btn-driver" onclick="openLoginPanel('driver')">
+                <button type="button" class="card-btn btn-driver" onclick="openLoginPanel('driver')" data-i18n="card_driver_btn">
                     Driver Login &rarr;
                 </button>
             </div>
@@ -769,10 +991,10 @@
                     <div class="card-icon-badge">
                         <span class="material-symbols-outlined">confirmation_number</span>
                     </div>
-                    <h3 class="card-title">Conductor</h3>
-                    <p class="card-desc">Manage passenger trips, assigned bus and route information.</p>
+                    <h3 class="card-title" data-i18n="card_conductor_title">Conductor</h3>
+                    <p class="card-desc" data-i18n="card_conductor_desc">Manage passenger trips, assigned bus and route information.</p>
                 </div>
-                <button type="button" class="card-btn btn-conductor" onclick="openLoginPanel('conductor')">
+                <button type="button" class="card-btn btn-conductor" onclick="openLoginPanel('conductor')" data-i18n="card_conductor_btn">
                     Conductor Login &rarr;
                 </button>
             </div>
@@ -783,10 +1005,10 @@
                     <div class="card-icon-badge">
                         <span class="material-symbols-outlined">shield</span>
                     </div>
-                    <h3 class="card-title">Administrator</h3>
-                    <p class="card-desc">Manage buses, drivers, conductors, routes and system operations.</p>
+                    <h3 class="card-title" data-i18n="card_admin_title">Administrator</h3>
+                    <p class="card-desc" data-i18n="card_admin_desc">Manage buses, drivers, conductors, routes and system operations.</p>
                 </div>
-                <button type="button" class="card-btn btn-admin" onclick="openLoginPanel('admin')">
+                <button type="button" class="card-btn btn-admin" onclick="openLoginPanel('admin')" data-i18n="card_admin_btn">
                     Administrator Login &rarr;
                 </button>
             </div>
@@ -1149,6 +1371,100 @@
             return str.charAt(0).toUpperCase() + str.slice(1);
         }
 
+        // ============================================================
+        // UNIFIED LOGIN — single form for every role (Passenger, Driver,
+        // Conductor, Admin). The backend determines the role; the person
+        // never has to pick one before signing in.
+        // ============================================================
+        function showUnifiedMessage(kind, message) {
+            const errBox = document.getElementById('unified-error');
+            const okBox = document.getElementById('unified-success');
+            errBox.classList.remove('show');
+            okBox.classList.remove('show');
+            if (kind === 'error') {
+                errBox.textContent = message;
+                errBox.classList.add('show');
+            } else {
+                okBox.textContent = message;
+                okBox.classList.add('show');
+            }
+        }
+
+        function toggleRegisterMode() {
+            const loginForm = document.getElementById('unified-login-form');
+            const registerForm = document.getElementById('register-fields');
+            const link = document.getElementById('toggle-register-link');
+            const showingRegister = registerForm.style.display === 'block';
+            loginForm.style.display = showingRegister ? 'block' : 'none';
+            registerForm.style.display = showingRegister ? 'none' : 'block';
+            link.textContent = showingRegister
+                ? (TRANSLATIONS[currentLang]?.link_create_account || 'Create an account')
+                : (TRANSLATIONS[currentLang]?.link_back_to_login || 'Back to sign in');
+        }
+
+        async function handleUnifiedLogin(event) {
+            event.preventDefault();
+            const identifier = document.getElementById('unified-identifier').value.trim();
+            const password = document.getElementById('unified-password').value;
+            const btn = document.getElementById('unified-submit-btn');
+            const label = document.getElementById('unified-submit-label');
+
+            btn.disabled = true;
+            const originalLabel = label.textContent;
+            label.textContent = '...';
+
+            try {
+                const res = await fetch('/api/auth/unified-login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ identifier, password })
+                });
+                const result = await res.json();
+                if (result.success) {
+                    showUnifiedMessage('success', 'Signed in! Redirecting…');
+                    window.location.href = result.redirect;
+                } else {
+                    showUnifiedMessage('error', result.error || 'Invalid credentials.');
+                }
+            } catch (err) {
+                showUnifiedMessage('error', 'Network error connecting to the server.');
+            } finally {
+                btn.disabled = false;
+                label.textContent = originalLabel;
+            }
+            return false;
+        }
+
+        async function handleUnifiedRegister(event) {
+            event.preventDefault();
+            const name = document.getElementById('reg-name').value.trim();
+            const email = document.getElementById('reg-email').value.trim();
+            const phone = document.getElementById('reg-phone').value.trim();
+            const password = document.getElementById('reg-password').value;
+            const btn = document.getElementById('register-submit-btn');
+            btn.disabled = true;
+
+            try {
+                const res = await fetch('/api/auth/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, email, phone, password })
+                });
+                const result = await res.json();
+                if (result.success) {
+                    showUnifiedMessage('success', 'Account created! Redirecting…');
+                    window.location.href = result.redirect;
+                } else {
+                    showUnifiedMessage('error', result.error || 'Could not create account.');
+                }
+            } catch (err) {
+                showUnifiedMessage('error', 'Network error connecting to the server.');
+            } finally {
+                btn.disabled = false;
+            }
+            return false;
+        }
+
         // If URL has an error param from callback (e.g. ?error=unauthorized&role=driver)
         window.addEventListener('DOMContentLoaded', () => {
             const params = new URLSearchParams(window.location.search);
@@ -1168,5 +1484,6 @@
             }
         });
     </script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
 </body>
 </html>

@@ -111,6 +111,12 @@
             </div>
         </div>
         <div class="flex items-center gap-2 shrink-0">
+            <select id="lang-switcher" onchange="setLanguage(this.value)" aria-label="Choose language"
+                class="h-8 px-2 rounded-full text-[11px] font-bold border border-outline-variant/40 bg-white text-on-surface cursor-pointer">
+                <option value="en">EN</option>
+                <option value="hi">हिं</option>
+                <option value="te">తె</option>
+            </select>
             <a href="/logout" class="h-8 w-8 rounded-full bg-surface-container flex items-center justify-center hover:bg-surface-container-high transition-colors" title="Logout">
                 <span class="material-symbols-outlined text-on-surface-variant text-[20px]">logout</span>
             </a>
@@ -123,13 +129,53 @@
 
     <!-- TAB: Find Bus -->
     <div id="tab-find" class="tab-panel active w-full px-gutter-mobile gap-space-md pt-3">
+
+        <!-- Trip Planner: Source -> Destination -> live path on the map -->
+        <div class="w-full bg-white rounded-xl p-space-md shadow-sm border border-outline-variant/30 mb-3">
+            <h3 class="font-headline text-[14px] font-bold text-on-surface flex items-center gap-1.5" data-i18n="plan_trip_title">
+                <span class="material-symbols-outlined text-primary text-[18px]">alt_route</span> Plan Your Trip
+            </h3>
+            <p class="text-[11px] text-on-surface-variant mt-0.5 mb-2.5" data-i18n="plan_trip_sub">Enter where you're starting from and where you're going — we'll show the route and any live buses on it.</p>
+
+            <div class="flex items-center gap-2">
+                <div class="flex-1 flex flex-col gap-2">
+                    <div class="relative">
+                        <span class="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-[16px] text-primary">trip_origin</span>
+                        <input type="text" id="trip-source-input" list="trip-source-list" data-i18n-placeholder="source_placeholder" placeholder="e.g. Vijayawada"
+                            class="w-full h-10 pl-8 pr-2 bg-surface-container-low rounded-lg text-[13px] border border-outline-variant/40 focus:border-primary focus:outline-none"
+                            oninput="onPlaceInput(this, 'trip-source-list')" autocomplete="off">
+                        <datalist id="trip-source-list"></datalist>
+                    </div>
+                    <div class="relative">
+                        <span class="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-[16px] text-error">location_on</span>
+                        <input type="text" id="trip-destination-input" list="trip-destination-list" data-i18n-placeholder="destination_placeholder" placeholder="e.g. Tirupathi"
+                            class="w-full h-10 pl-8 pr-2 bg-surface-container-low rounded-lg text-[13px] border border-outline-variant/40 focus:border-primary focus:outline-none"
+                            oninput="onPlaceInput(this, 'trip-destination-list')" autocomplete="off">
+                        <datalist id="trip-destination-list"></datalist>
+                    </div>
+                </div>
+                <button type="button" onclick="swapTripInputs()" title="Swap" data-i18n-title="swap_locations"
+                    class="h-10 w-10 shrink-0 rounded-full bg-surface-container flex items-center justify-center hover:bg-surface-container-high transition-colors">
+                    <span class="material-symbols-outlined text-[18px] text-on-surface-variant">swap_vert</span>
+                </button>
+            </div>
+
+            <button type="button" onclick="planTrip()"
+                class="w-full h-10 mt-2.5 rounded-lg bg-primary text-on-primary text-[13px] font-bold flex items-center justify-center gap-1.5 hover:opacity-90 transition-opacity"
+                data-i18n="btn_find_route">
+                <span class="material-symbols-outlined text-[18px]">directions</span> Show Route & Live Buses
+            </button>
+
+            <div id="trip-results" class="mt-2.5"></div>
+        </div>
+
         <!-- Search Bar -->
         <div class="w-full bg-white rounded-xl p-space-md shadow-sm border border-outline-variant/30">
             <div class="flex items-center gap-3">
                 <div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                     <span class="material-symbols-outlined text-primary text-[22px]">search</span>
                 </div>
-                <input type="text" id="bus-search-input" placeholder="Search buses, routes, or stops..."
+                <input type="text" id="bus-search-input" data-i18n-placeholder="search_placeholder" placeholder="Search buses, routes, or stops..."
                     class="flex-1 h-11 bg-surface-container-low rounded-lg px-3 text-[14px] border border-outline-variant/40 focus:border-primary focus:outline-none transition-colors"
                     oninput="searchBuses()">
             </div>
@@ -137,10 +183,10 @@
 
         <!-- Filter Chips -->
         <div class="flex gap-2 mt-3 overflow-x-auto pb-1" id="filter-chips">
-            <button class="filter-chip active shrink-0 h-8 px-3 rounded-full text-[12px] font-semibold border transition-colors bg-inverse-surface text-inverse-on-surface border-inverse-surface" data-filter="all" onclick="setFilter('all', this)">All</button>
+            <button class="filter-chip active shrink-0 h-8 px-3 rounded-full text-[12px] font-semibold border transition-colors bg-inverse-surface text-inverse-on-surface border-inverse-surface" data-filter="all" onclick="setFilter('all', this)" data-i18n="filter_all">All</button>
             <button class="filter-chip shrink-0 h-8 px-3 rounded-full text-[12px] font-semibold border transition-colors bg-white text-on-surface border-outline-variant" data-filter="APSRTC" onclick="setFilter('APSRTC', this)">APSRTC</button>
             <button class="filter-chip shrink-0 h-8 px-3 rounded-full text-[12px] font-semibold border transition-colors bg-white text-on-surface border-outline-variant" data-filter="TGSRTC" onclick="setFilter('TGSRTC', this)">TGSRTC</button>
-            <button class="filter-chip shrink-0 h-8 px-3 rounded-full text-[12px] font-semibold border transition-colors bg-white text-on-surface border-outline-variant" data-filter="live" onclick="setFilter('live', this)">Live Only</button>
+            <button class="filter-chip shrink-0 h-8 px-3 rounded-full text-[12px] font-semibold border transition-colors bg-white text-on-surface border-outline-variant" data-filter="live" onclick="setFilter('live', this)" data-i18n="filter_live">Live Only</button>
         </div>
 
         <!-- Bus Results List -->
@@ -203,8 +249,8 @@
         <!-- No bus selected state -->
         <div id="progress-empty" class="text-center py-12 text-on-surface-variant">
             <span class="material-symbols-outlined text-[48px] block mb-3 opacity-30">timeline</span>
-            <p class="font-headline text-[16px] font-bold text-on-surface mb-1">No Bus Selected</p>
-            <p class="text-[13px]">Select a bus from "Find Bus" or "Live Radar" to see stop-by-stop progress</p>
+            <p class="font-headline text-[16px] font-bold text-on-surface mb-1" data-i18n="no_bus_selected_title">No Bus Selected</p>
+            <p class="text-[13px]" data-i18n="no_bus_selected_desc">Select a bus from "Find Bus" or "Live Radar" to see stop-by-stop progress</p>
         </div>
 
         <!-- Active tracking content (hidden until bus selected) -->
@@ -287,11 +333,11 @@
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-2">
                         <span class="material-symbols-outlined text-primary text-[20px]">route</span>
-                        <h2 class="font-headline text-[18px] font-bold text-on-surface">Stop-by-Stop Progress</h2>
+                        <h2 class="font-headline text-[18px] font-bold text-on-surface" data-i18n="stop_by_stop_progress">Stop-by-Stop Progress</h2>
                     </div>
                     <button class="h-8 px-2.5 rounded bg-surface-container hover:bg-surface-container-high transition-colors flex items-center gap-1 text-on-surface" onclick="refreshProgress()">
                         <span class="material-symbols-outlined text-[16px]" id="refresh-icon">refresh</span>
-                        <span class="text-[11px] font-bold uppercase">Sync</span>
+                        <span class="text-[11px] font-bold uppercase" data-i18n="sync_btn">Sync</span>
                     </button>
                 </div>
 
@@ -303,9 +349,9 @@
 
             <!-- Complaints section -->
             <div class="w-full bg-white rounded-xl p-space-md shadow-sm flex flex-col gap-3">
-                <h3 class="font-headline text-[16px] font-bold text-on-surface">Report an Issue</h3>
+                <h3 class="font-headline text-[16px] font-bold text-on-surface" data-i18n="report_issue_title">Report an Issue</h3>
                 <select id="complaint-category" class="h-11 bg-surface-container-low rounded-lg px-3 text-[14px] border border-outline-variant/40">
-                    <option value="">Select category...</option>
+                    <option value="" data-i18n="select_category">Select category...</option>
                     <option value="Bus Delay">Bus Delay</option>
                     <option value="GPS / Tracking Issue">GPS / Tracking Issue</option>
                     <option value="Driver / Conductor Issue">Driver / Conductor Issue</option>
@@ -313,8 +359,8 @@
                     <option value="Route / Stop Issue">Route / Stop Issue</option>
                     <option value="Other">Other</option>
                 </select>
-                <textarea id="complaint-description" rows="2" placeholder="Describe the issue..." class="bg-surface-container-low rounded-lg px-3 py-2 text-[14px] border border-outline-variant/40 resize-none"></textarea>
-                <button onclick="submitComplaint()" class="h-10 rounded-lg bg-primary text-on-primary text-[14px] font-bold transition-colors hover:bg-primary-container">Submit Report</button>
+                <textarea id="complaint-description" rows="2" data-i18n-placeholder="describe_issue" placeholder="Describe the issue..." class="bg-surface-container-low rounded-lg px-3 py-2 text-[14px] border border-outline-variant/40 resize-none"></textarea>
+                <button onclick="submitComplaint()" class="h-10 rounded-lg bg-primary text-on-primary text-[14px] font-bold transition-colors hover:bg-primary-container" data-i18n="submit_report">Submit Report</button>
                 <p id="complaint-msg" class="text-[12px] font-semibold text-center"></p>
             </div>
         </div>
@@ -327,20 +373,21 @@
     <div class="h-14 px-gutter-mobile grid grid-cols-3 items-center">
         <button class="nav-tab flex flex-col items-center justify-center h-full gap-0.5 transition-colors text-primary font-bold" data-tab="find" onclick="switchTab('find')">
             <span class="material-symbols-outlined text-[24px]">directions_bus</span>
-            <span class="text-[11px] font-bold">Find Bus</span>
+            <span class="text-[11px] font-bold" data-i18n="nav_find_bus">Find Bus</span>
         </button>
         <button class="nav-tab flex flex-col items-center justify-center h-full gap-0.5 transition-colors text-on-surface-variant" data-tab="map" onclick="switchTab('map')">
             <span class="material-symbols-outlined text-[24px]">explore</span>
-            <span class="text-[11px] font-bold">Live Radar</span>
+            <span class="text-[11px] font-bold" data-i18n="nav_live_radar">Live Radar</span>
         </button>
         <button class="nav-tab flex flex-col items-center justify-center h-full gap-0.5 transition-colors text-on-surface-variant" data-tab="progress" onclick="switchTab('progress')">
             <span class="material-symbols-outlined text-[24px]">timeline</span>
-            <span class="text-[11px] font-bold">Progress</span>
+            <span class="text-[11px] font-bold" data-i18n="nav_progress">Progress</span>
         </button>
     </div>
 </nav>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
 <script src="{{ url_for('static', filename='js/passenger.js') }}"></script>
 </body>
 </html>

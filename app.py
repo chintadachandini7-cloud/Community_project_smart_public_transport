@@ -1,16 +1,19 @@
 import os
 import uuid
+import math
 import sqlite3
 from datetime import datetime
 import requests
+from werkzeug.security import check_password_hash, generate_password_hash
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 import database
 
 app = Flask(__name__)
-app.secret_key = 'your-existing-project-secret'
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'your-existing-project-secret')
 
-# Admin email whitelist — add your Google emails here
-ADMIN_EMAILS = ['chintadachandini2408@gmail.com']
+# Admin whitelist now lives in one place (database.py) so it can't drift
+# out of sync between the unified login and the Google sign-in flow.
+ADMIN_EMAILS = database.ADMIN_EMAILS
 
 # Initialize the database and create tables if they don't exist
 database.init_db()
@@ -96,6 +99,76 @@ def set_session():
         session['passenger_id'] = user_id
 
     return jsonify({'success': True})
+
+# ==========================================
+# UNIFIED LOGIN — ONE form/endpoint for every role
+# ==========================================
+# Previously each role had a different way to sign in (passenger needed no
+# login at all, driver/conductor had a separate phone+password form, admin
+# was Google-only). This single endpoint accepts an email OR phone plus a
+# password for ANY role; the account itself determines the role and the
+# correct dashboard, so the person logging in never has to pick a role card.
+
+def _role_dashboard_url(role):
+    return {
+        'admin': '/admin/dashboard',
+        'driver': '/driver/dashboard',
+        'conductor': '/conductor/dashboard',
+    }.get(role, '/user/dashboard')
+
+def _apply_session_for_identity(identity):
+    role = identity['role']
+    session.clear()
+    session['user_role'] = role
+    session['user_email'] = identity.get('email')
+    session['user_name'] = identity.get('name')
+    if role == 'driver':
+        session['driver_id'] = identity['id']
+        session['driver_name'] = identity.get('name')
+    elif role == 'conductor':
+        session['conductor_id'] = identity['id']
+        session['conductor_name'] = identity.get('name')
+    else:
+        # passenger and admin both get a passenger_id so shared passenger
+        # APIs (complaints, etc.) keep working if an admin browses them too
+        session['passenger_id'] = session.get('passenger_id') or str(identity.get('id') or uuid.uuid4())
+
+@app.route('/api/auth/unified-login', methods=['POST'])
+def unified_login():
+    data = request.json or request.form or {}
+    identifier = (data.get('identifier') or data.get('email') or data.get('phone') or '').strip()
+    password = data.get('password') or ''
+
+    if not identifier or not password:
+        return jsonify({'success': False, 'error': 'Please enter your email/phone and password.'}), 400
+
+    identity = database.authenticate_unified(identifier, password)
+    if not identity:
+        return jsonify({'success': False, 'error': 'Invalid credentials. Please check your email/phone and password.'}), 401
+
+    _apply_session_for_identity(identity)
+    return jsonify({'success': True, 'role': identity['role'], 'redirect': _role_dashboard_url(identity['role'])})
+
+@app.route('/api/auth/register', methods=['POST'])
+def unified_register():
+    """Passenger self sign-up through the same unified login page."""
+    data = request.json or request.form or {}
+    name = (data.get('name') or '').strip()
+    email = (data.get('email') or '').strip().lower()
+    phone = (data.get('phone') or '').strip()
+    password = data.get('password') or ''
+
+    if not email or not password:
+        return jsonify({'success': False, 'error': 'Email and password are required.'}), 400
+    if len(password) < 6:
+        return jsonify({'success': False, 'error': 'Password must be at least 6 characters.'}), 400
+
+    user_id, err = database.register_passenger(name, email, phone, password)
+    if err:
+        return jsonify({'success': False, 'error': err}), 409
+
+    _apply_session_for_identity({'role': 'passenger', 'id': user_id, 'name': name or email, 'email': email})
+    return jsonify({'success': True, 'role': 'passenger', 'redirect': '/user/dashboard'})
 
 def sync_profile(sb, email, name, role, uid=None):
     if not sb or not email:
@@ -654,6 +727,14 @@ def simulate_move(bus_id):
     eta_time = (datetime.now() + timedelta(seconds=ticks_remaining)).strftime("%H:%M:%S")
     
     if arrived:
+        # DB CORRECTION: this used an undefined `new_next_stop_id` variable,
+        # which raised a NameError (HTTP 500) every single time a simulated
+        # bus reached a stop. Advance to the next stop in sequence instead
+        # (or leave it unset once the route's final stop is reached).
+        current_idx = next((i for i, s in enumerate(stops) if s['id'] == target_stop['id']), 0)
+        upcoming_stop = stops[current_idx + 1] if current_idx + 1 < len(stops) else None
+        new_next_stop_id = upcoming_stop['id'] if upcoming_stop else None
+
         conn.execute('UPDATE buses SET current_latitude=?, current_longitude=?, next_stop_id=? WHERE id=?',
                      (new_lat, new_lon, new_next_stop_id, bus_id))
                      
@@ -674,11 +755,6 @@ def simulate_move(bus_id):
         'arrived': arrived, 'new_lat': new_lat, 'new_lon': new_lon,
         'eta': eta_time, 'target_stop_name': target_stop['stop_name']
     })
-    
-    return jsonify({
-        'arrived': arrived, 'new_lat': new_lat, 'new_lon': new_lon,
-        'eta': eta_time, 'target_stop_name': target_stop['stop_name']
-    })
 
 # ==========================================
 # STAGE 4: DRIVER & CONDUCTOR APIs
@@ -686,16 +762,14 @@ def simulate_move(bus_id):
 
 @app.route('/driver/login', methods=['GET', 'POST'], strict_slashes=False)
 def driver_login():
+    # Kept for backwards compatibility; the unified /login page is now the
+    # single place every role signs in from.
     if request.method == 'POST':
         phone = request.form.get('phone')
         password = request.form.get('password')
-        conn = get_db()
-        driver = conn.execute("SELECT * FROM drivers WHERE phone=? AND password=?", (phone, password)).fetchone()
-        conn.close()
-        if driver:
-            session['driver_id'] = driver['id']
-            session['driver_name'] = driver['name']
-            session['user_role'] = 'driver'
+        identity = database.authenticate_unified(phone, password)
+        if identity and identity['role'] == 'driver':
+            _apply_session_for_identity(identity)
             return redirect(url_for('driver_dashboard'))
         return "Invalid credentials", 401
     return redirect(url_for('login_page'))
@@ -868,18 +942,145 @@ def get_bus_by_number(bus_number):
 
     return jsonify({'error': 'Bus not found. Please check the bus number or contact the administrator.'}), 404
 
+# ==========================================
+# TRIP PLANNER — search by Source & Destination, get the live path
+# ("where is my bus", like a train-running-status view)
+# ==========================================
+
+def haversine_km(lat1, lon1, lat2, lon2):
+    """Great-circle distance in km. Used for ETA on the trip planner —
+    kept separate from the older `calculate_distance()` above, which is a
+    simulation step-size helper in plain lat/lng degrees, not real km."""
+    if None in (lat1, lon1, lat2, lon2):
+        return None
+    try:
+        r = 6371.0
+        phi1, phi2 = math.radians(float(lat1)), math.radians(float(lat2))
+        dphi = math.radians(float(lat2) - float(lat1))
+        dlambda = math.radians(float(lon2) - float(lon1))
+        a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+        return 2 * r * math.asin(min(1, math.sqrt(a)))
+    except (TypeError, ValueError):
+        return None
+
+AVG_BUS_SPEED_KMPH = 35.0
+
+@app.route('/api/places/suggest', methods=['GET'])
+def suggest_places():
+    """Autocomplete for the Source/Destination fields, drawn from real
+    route endpoints and stop names already in the database."""
+    q = (request.args.get('q') or '').strip()
+    if len(q) < 2:
+        return jsonify([])
+    conn = get_db()
+    like = f"%{q}%"
+    rows = conn.execute('''
+        SELECT DISTINCT name FROM (
+            SELECT source AS name FROM routes WHERE source LIKE ?
+            UNION
+            SELECT destination AS name FROM routes WHERE destination LIKE ?
+            UNION
+            SELECT stop_name AS name FROM stops WHERE stop_name LIKE ?
+        )
+        WHERE name IS NOT NULL AND name != ''
+        ORDER BY (CASE WHEN name LIKE ? THEN 0 ELSE 1 END), name
+        LIMIT 12
+    ''', (like, like, like, f"{q}%")).fetchall()
+    conn.close()
+    return jsonify([r['name'] for r in rows])
+
+@app.route('/api/trip/plan', methods=['GET'])
+def plan_trip():
+    """Given a Source and Destination, find matching route(s), the ordered
+    stop-by-stop path to draw on the map, and any live buses currently on
+    that route with a live ETA to the destination — the "where is my bus"
+    view for a source/destination search rather than a bus-number search."""
+    source = (request.args.get('source') or '').strip()
+    destination = (request.args.get('destination') or '').strip()
+    if not source or not destination:
+        return jsonify({'error': 'Both source and destination are required.'}), 400
+
+    conn = get_db()
+    like_src, like_dst = f"%{source}%", f"%{destination}%"
+    matched, seen_ids = [], set()
+
+    # Tier 1 — direct routes whose official source/destination match.
+    for r in conn.execute("SELECT * FROM routes WHERE source LIKE ? AND destination LIKE ? LIMIT 15", (like_src, like_dst)).fetchall():
+        if r['id'] not in seen_ids:
+            matched.append({'route': dict(r), 'from_order': None, 'to_order': None})
+            seen_ids.add(r['id'])
+
+    # Tier 2 — source & destination are both stops on the SAME route, in the
+    # right order, so boarding partway through a longer route still works.
+    if len(matched) < 10:
+        for vs in conn.execute('''
+            SELECT a.route_id, a.stop_order AS from_order, b.stop_order AS to_order
+            FROM stops a JOIN stops b ON a.route_id = b.route_id
+            WHERE a.stop_name LIKE ? AND b.stop_name LIKE ? AND a.stop_order < b.stop_order
+            LIMIT 15
+        ''', (like_src, like_dst)).fetchall():
+            if vs['route_id'] in seen_ids:
+                continue
+            r = conn.execute("SELECT * FROM routes WHERE id=?", (vs['route_id'],)).fetchone()
+            if r:
+                matched.append({'route': dict(r), 'from_order': vs['from_order'], 'to_order': vs['to_order']})
+                seen_ids.add(r['id'])
+
+    results = []
+    for m in matched[:8]:
+        route = m['route']
+        stops = [dict(s) for s in conn.execute(
+            "SELECT id, stop_name, latitude, longitude, stop_order, scheduled_arrival_time FROM stops WHERE route_id=? ORDER BY stop_order",
+            (route['id'],)).fetchall()]
+        if not stops:
+            continue
+
+        path_stops = stops
+        if m['from_order'] is not None:
+            path_stops = [s for s in stops if m['from_order'] <= s['stop_order'] <= m['to_order']]
+        dest_stop = path_stops[-1]
+
+        live_buses = []
+        for b in conn.execute("SELECT * FROM buses WHERE route_id=?", (route['id'],)).fetchall():
+            b = dict(b)
+            dist_km = haversine_km(b.get('current_latitude'), b.get('current_longitude'), dest_stop['latitude'], dest_stop['longitude'])
+            live_buses.append({
+                'bus_id': b['id'],
+                'bus_number': b['bus_number'],
+                'bus_name': b.get('bus_name'),
+                'status': b.get('status'),
+                'operator': b.get('operator'),
+                'service_type': b.get('service_type'),
+                'latitude': b.get('current_latitude'),
+                'longitude': b.get('current_longitude'),
+                'distance_km': round(dist_km, 1) if dist_km is not None else None,
+                'eta_minutes': round((dist_km / AVG_BUS_SPEED_KMPH) * 60) if dist_km is not None else None,
+            })
+
+        results.append({
+            'route_id': route['id'],
+            'route_name': route['route_name'],
+            'operator': route.get('operator'),
+            'service_type': route.get('service_type'),
+            'boarding_stop': path_stops[0]['stop_name'],
+            'alighting_stop': dest_stop['stop_name'],
+            'path': [{'name': s['stop_name'], 'lat': s['latitude'], 'lng': s['longitude'], 'order': s['stop_order']} for s in path_stops],
+            'buses': live_buses,
+        })
+
+    conn.close()
+    return jsonify({'source': source, 'destination': destination, 'matches': results})
+
 @app.route('/conductor/login', methods=['GET', 'POST'], strict_slashes=False)
 def conductor_login():
+    # Kept for backwards compatibility; the unified /login page is now the
+    # single place every role signs in from.
     if request.method == 'POST':
         phone = request.form.get('phone')
         password = request.form.get('password')
-        conn = get_db()
-        conductor = conn.execute("SELECT * FROM conductors WHERE phone=? AND password=?", (phone, password)).fetchone()
-        conn.close()
-        if conductor:
-            session['conductor_id'] = conductor['id']
-            session['conductor_name'] = conductor['name']
-            session['user_role'] = 'conductor'
+        identity = database.authenticate_unified(phone, password)
+        if identity and identity['role'] == 'conductor':
+            _apply_session_for_identity(identity)
             return redirect(url_for('conductor_dashboard'))
         return "Invalid credentials", 401
     return redirect(url_for('login_page'))
