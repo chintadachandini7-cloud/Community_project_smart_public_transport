@@ -1,6 +1,8 @@
 // ============================================================
 // Smart Public Transport — Multi-Language Interface
-// One dictionary, applied everywhere via [data-i18n] / [data-i18n-placeholder].
+// One dictionary, applied everywhere via [data-i18n] / [data-i18n-placeholder]
+// AND the t() helper used in passenger.js for dynamically built HTML.
+//
 // Add a language by adding a new top-level key below and an <option> in
 // the language <select> on each page — no other code changes needed.
 // ============================================================
@@ -36,13 +38,19 @@ const TRANSLATIONS = {
         card_admin_desc: "Manage buses, drivers, conductors, routes and system operations.",
         card_admin_btn: "Administrator Login →",
 
-        // Passenger dashboard — nav & header
+        // Header
+        app_name: "Smart Transit",
+        header_live: "LIVE",
+
+        // Passenger dashboard — nav & tabs
         nav_find_bus: "Find Bus",
         nav_live_radar: "Live Radar",
         nav_progress: "Progress",
         search_placeholder: "Search buses, routes, or stops...",
         filter_all: "All",
         filter_live: "Live Only",
+
+        // Trip planner
         plan_trip_title: "Plan Your Trip",
         plan_trip_sub: "Enter where you're starting from and where you're going — we'll show the route and any live buses on it.",
         field_source: "Source",
@@ -58,23 +66,63 @@ const TRANSLATIONS = {
         boarding_at: "Board at",
         alight_at: "Alight at",
 
-        // Progress / complaints
+        // Bus cards (dynamic)
+        no_buses_found: "No buses found matching your search",
+        live_gps: "LIVE GPS",
+        gps_simulated: "GPS Simulated",
+        on_time: "ON TIME",
+        delayed: "DELAYED",
+        driver_label: "Driver",
+        view_live_gps_map: "View Live GPS Map",
+        stop_timeline: "Stop Timeline",
+        standard: "Standard",
+        unknown_route: "Unknown Route",
+
+        // Progress tab
         no_bus_selected_title: "No Bus Selected",
         no_bus_selected_desc: "Select a bus from \"Find Bus\" or \"Live Radar\" to see stop-by-stop progress",
         approaching_next_stop: "Approaching Next Stop",
         live_eta: "Live ETA",
         distance_label: "Distance",
         status_label: "Status",
-        on_time: "ON TIME",
         stop_by_stop_progress: "Stop-by-Stop Progress",
         sync_btn: "Sync",
+        verified: "Verified",
+        min_behind: "min behind",
+        running_on_schedule: "Running on schedule",
+        to_next_stop: "to next stop",
+        km_total: "km total",
+
+        // Timeline
+        no_stops_data: "No stops data available",
+        passed: "Passed",
+        live_position: "Live Position",
+        from_word: "from",
+        eta_label: "ETA",
+        next_stop: "Next Stop",
+        final_destination: "Final Destination",
+        terminus: "Terminus",
+        away: "away",
+        stop_word: "Stop",
+
+        // Map popups
+        live_gps_stream: "LIVE GPS STREAM",
+        loading: "Loading...",
+
+        // Complaints
         report_issue_title: "Report an Issue",
         select_category: "Select category...",
         describe_issue: "Describe the issue...",
         submit_report: "Submit Report",
+        complaint_fill: "Please fill in category and description.",
+        complaint_success: "✓ Report submitted successfully!",
+        complaint_error: "Error submitting report. Try again.",
+
+        // Misc
         logout: "Logout",
     },
     hi: {
+        // Login page
         unified_title: "स्मार्ट ट्रांज़िट में साइन इन करें",
         unified_sub: "एक ही लॉगिन सभी भूमिकाओं के लिए काम करता है — यात्री, ड्राइवर, कंडक्टर या एडमिन।",
         field_identifier: "ईमेल या फ़ोन नंबर",
@@ -103,12 +151,19 @@ const TRANSLATIONS = {
         card_admin_desc: "बसें, ड्राइवर, कंडक्टर, मार्ग और सिस्टम संचालन प्रबंधित करें।",
         card_admin_btn: "प्रशासक लॉगिन →",
 
+        // Header
+        app_name: "स्मार्ट ट्रांज़िट",
+        header_live: "लाइव",
+
+        // Nav & tabs
         nav_find_bus: "बस खोजें",
         nav_live_radar: "लाइव रडार",
         nav_progress: "प्रगति",
         search_placeholder: "बस, मार्ग या स्टॉप खोजें...",
         filter_all: "सभी",
         filter_live: "केवल लाइव",
+
+        // Trip planner
         plan_trip_title: "अपनी यात्रा की योजना बनाएं",
         plan_trip_sub: "बताएं कि आप कहाँ से शुरू कर रहे हैं और कहाँ जा रहे हैं — हम मार्ग और उस पर मौजूद लाइव बसें दिखाएंगे।",
         field_source: "प्रस्थान स्थान",
@@ -124,22 +179,62 @@ const TRANSLATIONS = {
         boarding_at: "यहाँ चढ़ें",
         alight_at: "यहाँ उतरें",
 
+        // Bus cards
+        no_buses_found: "आपकी खोज से मेल खाने वाली कोई बस नहीं मिली",
+        live_gps: "लाइव GPS",
+        gps_simulated: "GPS अनुकरण",
+        on_time: "समय पर",
+        delayed: "विलंबित",
+        driver_label: "ड्राइवर",
+        view_live_gps_map: "लाइव GPS मानचित्र देखें",
+        stop_timeline: "स्टॉप टाइमलाइन",
+        standard: "सामान्य",
+        unknown_route: "अज्ञात मार्ग",
+
+        // Progress
         no_bus_selected_title: "कोई बस चयनित नहीं",
         no_bus_selected_desc: "स्टॉप-दर-स्टॉप प्रगति देखने के लिए \"बस खोजें\" या \"लाइव रडार\" से एक बस चुनें",
         approaching_next_stop: "अगला स्टॉप आ रहा है",
         live_eta: "लाइव ईटीए",
         distance_label: "दूरी",
         status_label: "स्थिति",
-        on_time: "समय पर",
         stop_by_stop_progress: "स्टॉप-दर-स्टॉप प्रगति",
         sync_btn: "सिंक करें",
+        verified: "सत्यापित",
+        min_behind: "मिनट पीछे",
+        running_on_schedule: "समय पर चल रही है",
+        to_next_stop: "अगले स्टॉप तक",
+        km_total: "किमी कुल",
+
+        // Timeline
+        no_stops_data: "स्टॉप डेटा उपलब्ध नहीं है",
+        passed: "गुज़र चुका",
+        live_position: "लाइव स्थिति",
+        from_word: "से",
+        eta_label: "ईटीए",
+        next_stop: "अगला स्टॉप",
+        final_destination: "अंतिम गंतव्य",
+        terminus: "टर्मिनस",
+        away: "दूर",
+        stop_word: "स्टॉप",
+
+        // Map
+        live_gps_stream: "लाइव GPS स्ट्रीम",
+        loading: "लोड हो रहा है...",
+
+        // Complaints
         report_issue_title: "समस्या दर्ज करें",
         select_category: "श्रेणी चुनें...",
         describe_issue: "समस्या का वर्णन करें...",
         submit_report: "रिपोर्ट सबमिट करें",
+        complaint_fill: "कृपया श्रेणी और विवरण भरें।",
+        complaint_success: "✓ रिपोर्ट सफलतापूर्वक सबमिट हो गई!",
+        complaint_error: "रिपोर्ट सबमिट करने में त्रुटि। पुनः प्रयास करें।",
+
         logout: "लॉगआउट",
     },
     te: {
+        // Login page
         unified_title: "స్మార్ట్ ట్రాన్సిట్‌లోకి సైన్ ఇన్ చేయండి",
         unified_sub: "ఒకే లాగిన్ ప్రయాణికుడు, డ్రైవర్, కండక్టర్ లేదా అడ్మిన్ — అన్ని పాత్రలకూ పనిచేస్తుంది.",
         field_identifier: "ఇమెయిల్ లేదా ఫోన్ నంబర్",
@@ -168,12 +263,19 @@ const TRANSLATIONS = {
         card_admin_desc: "బస్సులు, డ్రైవర్లు, కండక్టర్లు, మార్గాలు మరియు సిస్టమ్ కార్యకలాపాలను నిర్వహించండి.",
         card_admin_btn: "అడ్మిన్ లాగిన్ →",
 
+        // Header
+        app_name: "స్మార్ట్ ట్రాన్సిట్",
+        header_live: "లైవ్",
+
+        // Nav & tabs
         nav_find_bus: "బస్సు వెతకండి",
         nav_live_radar: "లైవ్ రాడార్",
         nav_progress: "పురోగతి",
         search_placeholder: "బస్సులు, మార్గాలు లేదా స్టాప్‌లను వెతకండి...",
         filter_all: "అన్నీ",
         filter_live: "లైవ్ మాత్రమే",
+
+        // Trip planner
         plan_trip_title: "మీ ప్రయాణాన్ని ప్లాన్ చేయండి",
         plan_trip_sub: "మీరు ఎక్కడ నుండి బయలుదేరుతున్నారో, ఎక్కడికి వెళ్తున్నారో నమోదు చేయండి — మేము మార్గాన్ని మరియు దానిపై ఉన్న లైవ్ బస్సులను చూపిస్తాము.",
         field_source: "ప్రారంభ స్థలం",
@@ -189,25 +291,69 @@ const TRANSLATIONS = {
         boarding_at: "ఇక్కడ ఎక్కండి",
         alight_at: "ఇక్కడ దిగండి",
 
+        // Bus cards
+        no_buses_found: "మీ శోధనకు సరిపోలే బస్సులు కనుగొనబడలేదు",
+        live_gps: "లైవ్ GPS",
+        gps_simulated: "GPS అనుకరణ",
+        on_time: "సమయానికి",
+        delayed: "ఆలస్యం",
+        driver_label: "డ్రైవర్",
+        view_live_gps_map: "లైవ్ GPS మ్యాప్ చూడండి",
+        stop_timeline: "స్టాప్ టైమ్‌లైన్",
+        standard: "ప్రామాణికం",
+        unknown_route: "తెలియని మార్గం",
+
+        // Progress
         no_bus_selected_title: "బస్సు ఎంపిక చేయలేదు",
         no_bus_selected_desc: "స్టాప్-బై-స్టాప్ పురోగతిని చూడటానికి \"బస్సు వెతకండి\" లేదా \"లైవ్ రాడార్\" నుండి ఒక బస్సును ఎంచుకోండి",
         approaching_next_stop: "తదుపరి స్టాప్ సమీపిస్తోంది",
         live_eta: "లైవ్ ఈటీఏ",
         distance_label: "దూరం",
         status_label: "స్థితి",
-        on_time: "సమయానికి",
         stop_by_stop_progress: "స్టాప్-బై-స్టాప్ పురోగతి",
         sync_btn: "సింక్ చేయి",
+        verified: "ధ్రువీకరించబడింది",
+        min_behind: "నిమిషాలు ఆలస్యం",
+        running_on_schedule: "సమయానికి నడుస్తోంది",
+        to_next_stop: "తదుపరి స్టాప్ వరకు",
+        km_total: "కిమీ మొత్తం",
+
+        // Timeline
+        no_stops_data: "స్టాప్‌ల డేటా అందుబాటులో లేదు",
+        passed: "దాటింది",
+        live_position: "లైవ్ స్థానం",
+        from_word: "నుండి",
+        eta_label: "ఈటీఏ",
+        next_stop: "తదుపరి స్టాప్",
+        final_destination: "అంతిమ గమ్యస్థానం",
+        terminus: "టెర్మినస్",
+        away: "దూరంలో",
+        stop_word: "స్టాప్",
+
+        // Map
+        live_gps_stream: "లైవ్ GPS స్ట్రీమ్",
+        loading: "లోడ్ అవుతోంది...",
+
+        // Complaints
         report_issue_title: "సమస్యను నివేదించండి",
         select_category: "వర్గాన్ని ఎంచుకోండి...",
         describe_issue: "సమస్యను వివరించండి...",
         submit_report: "నివేదికను సమర్పించండి",
+        complaint_fill: "దయచేసి వర్గం మరియు వివరణను నమోదు చేయండి.",
+        complaint_success: "✓ నివేదిక విజయవంతంగా సమర్పించబడింది!",
+        complaint_error: "నివేదికను సమర్పించడంలో లోపం. మళ్ళీ ప్రయత్నించండి.",
+
         logout: "లాగ్ అవుట్",
     },
 };
 
 let currentLang = 'en';
 
+/**
+ * Apply translations to all static [data-i18n] elements, AND re-render
+ * any JS-generated dynamic content (bus cards, timeline, etc.) so switching
+ * language mid-session translates absolutely everything on the page.
+ */
 function applyLanguage(lang) {
     if (!TRANSLATIONS[lang]) lang = 'en';
     currentLang = lang;
@@ -216,28 +362,50 @@ function applyLanguage(lang) {
     const dict = TRANSLATIONS[lang];
     const fallback = TRANSLATIONS.en;
 
+    // 1. Static text nodes
     document.querySelectorAll('[data-i18n]').forEach(el => {
         const key = el.getAttribute('data-i18n');
         const text = dict[key] ?? fallback[key];
         if (text !== undefined) el.textContent = text;
     });
 
+    // 2. Placeholder attributes
     document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
         const key = el.getAttribute('data-i18n-placeholder');
         const text = dict[key] ?? fallback[key];
         if (text !== undefined) el.setAttribute('placeholder', text);
     });
 
+    // 3. Title attributes
     document.querySelectorAll('[data-i18n-title]').forEach(el => {
         const key = el.getAttribute('data-i18n-title');
         const text = dict[key] ?? fallback[key];
         if (text !== undefined) el.setAttribute('title', text);
     });
 
+    // 4. innerHTML blocks (demo hints etc.)
+    document.querySelectorAll('[data-i18n-html]').forEach(el => {
+        const key = el.getAttribute('data-i18n-html');
+        const text = dict[key] ?? fallback[key];
+        if (text !== undefined) el.innerHTML = text;
+    });
+
+    // Keep <select> in sync
     const switcher = document.getElementById('lang-switcher');
     if (switcher) switcher.value = lang;
 
     try { localStorage.setItem('preferredLang', lang); } catch (e) { /* storage may be unavailable */ }
+
+    // 5. Re-render dynamic JS content if the functions exist
+    if (typeof renderBusList === 'function') {
+        try { renderBusList(); } catch (e) { /* ignore if data not loaded yet */ }
+    }
+    if (typeof updateProgressPanel === 'function' && typeof selectedBus !== 'undefined' && selectedBus) {
+        try { loadProgressData(); } catch (e) { /* ignore */ }
+    }
+    if (typeof renderMapPills === 'function') {
+        try { renderMapPills(); } catch (e) { /* ignore */ }
+    }
 }
 
 // Called directly by the <select onchange="setLanguage(this.value)">

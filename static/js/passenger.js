@@ -142,7 +142,7 @@ function renderBusList() {
         container.innerHTML = `
             <div class="text-center py-8 text-on-surface-variant text-[14px]">
                 <span class="material-symbols-outlined text-[40px] block mb-2 opacity-40">search_off</span>
-                No buses found matching your search
+                ${t('no_buses_found', 'No buses found matching your search')}
             </div>`;
         return;
     }
@@ -150,8 +150,8 @@ function renderBusList() {
     container.innerHTML = filtered.map(bus => {
         const isLive = bus.gps_source === 'Real' || bus.status === 'Active Trip';
         const delayBadge = bus.delay_status === 'DELAYED'
-            ? `<span class="px-2 py-0.5 rounded-full bg-red-50 text-red-600 text-[11px] font-bold">DELAYED +${bus.delay_minutes || 0}m</span>`
-            : (isLive ? `<span class="px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-[11px] font-bold">ON TIME</span>` : '');
+            ? `<span class="px-2 py-0.5 rounded-full bg-red-50 text-red-600 text-[11px] font-bold">${t('delayed','DELAYED')} +${bus.delay_minutes || 0}m</span>`
+            : (isLive ? `<span class="px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-[11px] font-bold">${t('on_time','ON TIME')}</span>` : '');
 
         const serviceColor = getServiceColor(bus.service_type);
         const hasCoords = bus.current_latitude && bus.current_longitude;
@@ -165,18 +165,18 @@ function renderBusList() {
                         ${bus.bus_number || '--'}
                     </span>
                     <span class="px-2 py-0.5 rounded text-[11px] font-bold uppercase" style="background:${serviceColor.bg};color:${serviceColor.text};border:1px solid ${serviceColor.border}">
-                        ${bus.service_type || 'Standard'}
+                        ${bus.service_type || t('standard','Standard')}
                     </span>
                 </div>
                 <div class="flex items-center gap-1">
-                    ${isLive ? '<span class="w-2.5 h-2.5 rounded-full bg-green-500 live-pulse"></span><span class="text-[11px] font-bold text-green-700">LIVE GPS</span>' : '<span class="text-[11px] text-on-surface-variant">GPS Simulated</span>'}
+                    ${isLive ? `<span class="w-2.5 h-2.5 rounded-full bg-green-500 live-pulse"></span><span class="text-[11px] font-bold text-green-700">${t('live_gps','LIVE GPS')}</span>` : `<span class="text-[11px] text-on-surface-variant">${t('gps_simulated','GPS Simulated')}</span>`}
                 </div>
             </div>
             <div class="flex items-center justify-between mb-2">
                 <div class="min-w-0">
-                    <p class="font-headline text-[14px] font-bold text-on-surface truncate">${bus.route_name || bus.bus_name || 'Unknown Route'}</p>
+                    <p class="font-headline text-[14px] font-bold text-on-surface truncate">${bus.route_name || bus.bus_name || t('unknown_route','Unknown Route')}</p>
                     <p class="text-[12px] text-on-surface-variant">${bus.operator || '--'} • ${bus.source || ''} → ${bus.destination || ''}</p>
-                    ${bus.driver_name ? `<p class="text-[12px] text-primary font-bold mt-1 flex items-center gap-1"><span class="material-symbols-outlined text-[15px]">badge</span> Driver: ${bus.driver_name}</p>` : ''}
+                    ${bus.driver_name ? `<p class="text-[12px] text-primary font-bold mt-1 flex items-center gap-1"><span class="material-symbols-outlined text-[15px]">badge</span> ${t('driver_label','Driver')}: ${bus.driver_name}</p>` : ''}
                     ${hasCoords ? `<p class="text-[11px] text-on-surface-variant mt-0.5 font-mono flex items-center gap-1"><span class="material-symbols-outlined text-[13px]">location_on</span> ${coordsText}</p>` : ''}
                 </div>
                 <div class="flex flex-col items-end gap-1 shrink-0 ml-2">
@@ -186,11 +186,11 @@ function renderBusList() {
             <div class="flex items-center gap-2 pt-2 border-t border-outline-variant/20 mt-2" onclick="event.stopPropagation()">
                 <button onclick="trackOnMap('${bus.id}')" class="flex-1 py-2 px-3 rounded-lg bg-primary text-white text-[12px] font-bold flex items-center justify-center gap-1 hover:bg-primary-container transition-colors shadow-sm">
                     <span class="material-symbols-outlined text-[16px]">explore</span>
-                    View Live GPS Map
+                    ${t('view_live_gps_map','View Live GPS Map')}
                 </button>
                 <button onclick="selectBus('${bus.id}')" class="flex-1 py-2 px-3 rounded-lg bg-surface-container text-on-surface text-[12px] font-bold flex items-center justify-center gap-1 hover:bg-surface-container-high transition-colors">
                     <span class="material-symbols-outlined text-[16px]">timeline</span>
-                    Stop Timeline
+                    ${t('stop_timeline','Stop Timeline')}
                 </button>
             </div>
         </div>`;
@@ -269,26 +269,26 @@ function loadProgressData() {
 
     // Update banner
     document.getElementById('prog-bus-code').textContent = selectedBus.bus_number || '--';
-    document.getElementById('prog-service-type').textContent = selectedBus.service_type || 'Standard';
-    document.getElementById('prog-operator').textContent = (selectedBus.operator || '--') + ' Verified';
+    document.getElementById('prog-service-type').textContent = selectedBus.service_type || t('standard','Standard');
+    document.getElementById('prog-operator').textContent = (selectedBus.operator || '--') + ' ' + t('verified','Verified');
     document.getElementById('prog-route-name').textContent = selectedBus.route_name || selectedBus.bus_name || '--';
 
     const driverInfoEl = document.getElementById('prog-driver-info');
     if (driverInfoEl) {
         driverInfoEl.innerHTML = selectedBus.driver_name 
-            ? `<span class="material-symbols-outlined text-[15px]">person</span> Driver: <b class="underline">${selectedBus.driver_name}</b>`
+            ? `<span class="material-symbols-outlined text-[15px]">person</span> ${t('driver_label','Driver')}: <b class="underline">${selectedBus.driver_name}</b>`
             : '';
     }
 
     // Update delay status
     if (selectedBus.delay_status === 'DELAYED') {
-        document.getElementById('prog-delay-status').textContent = 'DELAYED';
+        document.getElementById('prog-delay-status').textContent = t('delayed','DELAYED');
         document.getElementById('prog-delay-status').style.color = '#dc2626';
-        document.getElementById('prog-delay-detail').textContent = `+${selectedBus.delay_minutes || 0} min behind`;
+        document.getElementById('prog-delay-detail').textContent = `+${selectedBus.delay_minutes || 0} ${t('min_behind','min behind')}`;
     } else {
-        document.getElementById('prog-delay-status').textContent = 'ON TIME';
+        document.getElementById('prog-delay-status').textContent = t('on_time','ON TIME');
         document.getElementById('prog-delay-status').style.color = '#004d27';
-        document.getElementById('prog-delay-detail').textContent = 'Running on schedule';
+        document.getElementById('prog-delay-detail').textContent = t('running_on_schedule','Running on schedule');
     }
 
     renderProgressMiniMap();
@@ -311,19 +311,19 @@ function updateProgressPanel() {
     const driverInfoEl = document.getElementById('prog-driver-info');
     if (driverInfoEl) {
         driverInfoEl.innerHTML = selectedBus.driver_name 
-            ? `<span class="material-symbols-outlined text-[15px]">person</span> Driver: <b class="underline">${selectedBus.driver_name}</b>`
+            ? `<span class="material-symbols-outlined text-[15px]">person</span> ${t('driver_label','Driver')}: <b class="underline">${selectedBus.driver_name}</b>`
             : '';
     }
 
     // Update delay status live
     if (selectedBus.delay_status === 'DELAYED') {
-        document.getElementById('prog-delay-status').textContent = 'DELAYED';
+        document.getElementById('prog-delay-status').textContent = t('delayed','DELAYED');
         document.getElementById('prog-delay-status').style.color = '#dc2626';
-        document.getElementById('prog-delay-detail').textContent = `+${selectedBus.delay_minutes || 0} min behind`;
+        document.getElementById('prog-delay-detail').textContent = `+${selectedBus.delay_minutes || 0} ${t('min_behind','min behind')}`;
     } else {
-        document.getElementById('prog-delay-status').textContent = 'ON TIME';
+        document.getElementById('prog-delay-status').textContent = t('on_time','ON TIME');
         document.getElementById('prog-delay-status').style.color = '#004d27';
-        document.getElementById('prog-delay-detail').textContent = 'Running on schedule';
+        document.getElementById('prog-delay-detail').textContent = t('running_on_schedule','Running on schedule');
     }
 
     renderProgressMiniMap();
@@ -371,14 +371,14 @@ function renderProgressMiniMap() {
 
             progressMiniMarker = L.marker([lat, lng], { icon })
                 .addTo(progressMiniMap)
-                .bindPopup(`<b>${selectedBus.bus_number}</b><br>Driver: ${selectedBus.driver_name || 'Active'}<br>Live GPS`)
+                .bindPopup(`<b>${selectedBus.bus_number}</b><br>${t('driver_label','Driver')}: ${selectedBus.driver_name || 'Active'}<br>${t('live_gps','Live GPS')}`)
                 .openPopup();
         }
     } else {
         progressMiniMap.setView([lat, lng], 15);
         if (progressMiniMarker) {
             progressMiniMarker.setLatLng([lat, lng]);
-            progressMiniMarker.setPopupContent(`<b>${selectedBus.bus_number}</b><br>Driver: ${selectedBus.driver_name || 'Active'}<br>Live GPS`);
+            progressMiniMarker.setPopupContent(`<b>${selectedBus.bus_number}</b><br>${t('driver_label','Driver')}: ${selectedBus.driver_name || 'Active'}<br>${t('live_gps','Live GPS')}`);
         }
         setTimeout(() => progressMiniMap.invalidateSize(), 100);
     }
@@ -397,7 +397,7 @@ function refreshProgress() {
 function renderTimeline(stops) {
     const container = document.getElementById('progress-timeline');
     if (!stops || stops.length === 0) {
-        container.innerHTML = '<p class="text-[13px] text-on-surface-variant text-center py-4">No stops data available</p>';
+        container.innerHTML = `<p class="text-[13px] text-on-surface-variant text-center py-4">${t('no_stops_data','No stops data available')}</p>`;
         return;
     }
 
@@ -429,7 +429,7 @@ function renderTimeline(stops) {
         const isCurrent = i === currentStopIdx;
         const isLast = i === stops.length - 1;
         const dist = haversine(busLat, busLng, stop.latitude, stop.longitude);
-        const distText = dist < 1 ? `${Math.round(dist * 1000)}m away` : `${dist.toFixed(1)} km away`;
+        const distText = dist < 1 ? `${Math.round(dist * 1000)}m ${t('away','away')}` : `${dist.toFixed(1)} km ${t('away','away')}`;
 
         if (isPassed) {
             // Passed stop
@@ -445,7 +445,7 @@ function renderTimeline(stops) {
                     </div>
                     <div class="flex flex-col items-end shrink-0 pl-2">
                         <span class="text-[13px] font-bold text-on-surface">${stop.scheduled_arrival_time || '--'}</span>
-                        <span class="text-[11px] text-primary font-medium">Passed</span>
+                        <span class="text-[11px] text-primary font-medium">${t('passed','Passed')}</span>
                     </div>
                 </div>
             </div>`;
@@ -460,12 +460,12 @@ function renderTimeline(stops) {
                     <div class="flex flex-col min-w-0">
                         <div class="flex items-center gap-1.5">
                             <span class="w-2 h-2 rounded-full bg-primary-fixed animate-ping"></span>
-                            <span class="text-[11px] font-bold text-primary-fixed uppercase tracking-wider">Live Position</span>
+                            <span class="text-[11px] font-bold text-primary-fixed uppercase tracking-wider">${t('live_position','Live Position')}</span>
                         </div>
-                        <span class="text-[12px] font-bold text-on-primary truncate">${distText} from ${stop.stop_name}</span>
+                        <span class="text-[12px] font-bold text-on-primary truncate">${distText} ${t('from_word','from')} ${stop.stop_name}</span>
                     </div>
                     <span class="px-2 py-0.5 rounded bg-white text-primary text-[13px] font-bold shrink-0">
-                        ${estimateETA(dist)} ETA
+                        ${estimateETA(dist)} ${t('eta_label','ETA')}
                     </span>
                 </div>
             </div>`;
@@ -478,7 +478,7 @@ function renderTimeline(stops) {
                 </div>
                 <div class="flex-1 bg-surface-container-low rounded-xl p-3 flex flex-col gap-1 min-w-0">
                     <div class="flex items-center justify-between">
-                        <span class="px-2 py-0.5 rounded bg-tertiary-fixed text-on-tertiary-fixed text-[11px] font-bold uppercase">Next Stop</span>
+                        <span class="px-2 py-0.5 rounded bg-tertiary-fixed text-on-tertiary-fixed text-[11px] font-bold uppercase">${t('next_stop','Next Stop')}</span>
                         <span class="text-[13px] font-bold text-tertiary-container">${stop.scheduled_arrival_time || '--'}</span>
                     </div>
                     <div class="flex items-baseline justify-between min-w-0">
@@ -497,11 +497,11 @@ function renderTimeline(stops) {
                 <div class="flex-1 flex items-baseline justify-between min-w-0">
                     <div class="flex flex-col min-w-0">
                         <span class="text-[14px] font-bold text-on-surface truncate">${stop.stop_name}</span>
-                        <span class="text-[12px] text-on-surface-variant">Final Destination</span>
+                        <span class="text-[12px] text-on-surface-variant">${t('final_destination','Final Destination')}</span>
                     </div>
                     <div class="flex flex-col items-end shrink-0 pl-2">
                         <span class="text-[13px] font-bold text-on-surface">${stop.scheduled_arrival_time || '--'}</span>
-                        <span class="text-[11px] text-primary font-bold">Terminus</span>
+                        <span class="text-[11px] text-primary font-bold">${t('terminus','Terminus')}</span>
                     </div>
                 </div>
             </div>`;
@@ -553,7 +553,7 @@ function updateMetrics(stops) {
     const totalDist = haversine(stops[0].latitude, stops[0].longitude, stops[stops.length-1].latitude, stops[stops.length-1].longitude);
 
     document.getElementById('prog-distance').textContent = distToNext < 1 ? `${Math.round(distToNext*1000)}m` : `${distToNext.toFixed(1)} km`;
-    document.getElementById('prog-total-dist').textContent = `to next stop • ${totalDist.toFixed(0)} km total`;
+    document.getElementById('prog-total-dist').textContent = `${t('to_next_stop','to next stop')} • ${totalDist.toFixed(0)} ${t('km_total','km total')}`;
 }
 
 // ============================================================
@@ -635,9 +635,9 @@ function updateMapMarkers() {
                 <div style="font-size:14px;font-weight:bold;color:#004d27;">${bus.bus_number}</div>
                 <div style="font-size:12px;color:#555;margin-bottom:4px;">${bus.route_name || bus.bus_name || ''}</div>
                 <div style="display:inline-block;padding:2px 6px;border-radius:4px;background:${isLive ? '#dcfce7' : '#f1f5f9'};color:${isLive ? '#15803d' : '#475569'};font-size:11px;font-weight:bold;margin-bottom:4px;">
-                    ${isLive ? '🟢 LIVE GPS STREAM' : 'GPS Simulated'}
+                    ${isLive ? '🟢 ' + t('live_gps_stream','LIVE GPS STREAM') : t('gps_simulated','GPS Simulated')}
                 </div>
-                ${bus.driver_name ? `<div style="font-size:11px;color:#1d4ed8;font-weight:bold;">Driver: ${bus.driver_name}</div>` : ''}
+                ${bus.driver_name ? `<div style="font-size:11px;color:#1d4ed8;font-weight:bold;">${t('driver_label','Driver')}: ${bus.driver_name}</div>` : ''}
                 <div style="font-size:10px;color:#666;font-family:monospace;margin-top:2px;">
                     GPS: ${Number(bus.current_latitude).toFixed(5)}, ${Number(bus.current_longitude).toFixed(5)}
                 </div>
@@ -669,18 +669,18 @@ function showMapBusCard(bus) {
     document.getElementById('map-bus-route').textContent = bus.route_name || bus.bus_name || '';
 
     const isLive = bus.gps_source === 'Real' || bus.status === 'Active Trip';
-    document.getElementById('map-bus-status').textContent = isLive ? 'LIVE GPS' : 'Simulated';
+    document.getElementById('map-bus-status').textContent = isLive ? t('live_gps','LIVE GPS') : t('gps_simulated','Simulated');
     document.getElementById('map-bus-status-dot').style.background = isLive ? '#16a34a' : '#94a3b8';
 
     const driverEl = document.getElementById('map-bus-driver');
-    if (driverEl) driverEl.textContent = bus.driver_name ? `Driver: ${bus.driver_name}` : '';
+    if (driverEl) driverEl.textContent = bus.driver_name ? `${t('driver_label','Driver')}: ${bus.driver_name}` : '';
 
     const coordsEl = document.getElementById('map-bus-coords');
     if (coordsEl) {
         coordsEl.textContent = bus.current_latitude ? `GPS: ${Number(bus.current_latitude).toFixed(5)}, ${Number(bus.current_longitude).toFixed(5)}` : '';
     }
 
-    document.getElementById('map-bus-next-stop').textContent = bus.next_stop_name || 'Loading...';
+    document.getElementById('map-bus-next-stop').textContent = bus.next_stop_name || t('loading','Loading...');
 
     // Load stops and draw route on map
     if (bus.route_id) {
@@ -726,7 +726,7 @@ function drawRouteOnMap(stops, bus) {
 
         const marker = L.marker([stop.latitude, stop.longitude], { icon })
             .addTo(map)
-            .bindTooltip(`${stop.stop_name} (Stop ${stop.stop_order})`, { direction: 'top' });
+            .bindTooltip(`${stop.stop_name} (${t('stop_word','Stop')} ${stop.stop_order})`, { direction: 'top' });
         stopMarkers.push(marker);
     });
 
@@ -752,7 +752,7 @@ function submitComplaint() {
     const msgEl = document.getElementById('complaint-msg');
 
     if (!category || !description) {
-        msgEl.textContent = 'Please fill in category and description.';
+        msgEl.textContent = t('complaint_fill','Please fill in category and description.');
         msgEl.style.color = '#dc2626';
         return;
     }
@@ -773,14 +773,14 @@ function submitComplaint() {
             msgEl.textContent = data.error;
             msgEl.style.color = '#dc2626';
         } else {
-            msgEl.textContent = '✓ Report submitted successfully!';
+            msgEl.textContent = t('complaint_success','✓ Report submitted successfully!');
             msgEl.style.color = '#004d27';
             document.getElementById('complaint-category').value = '';
             document.getElementById('complaint-description').value = '';
         }
     })
     .catch(() => {
-        msgEl.textContent = 'Error submitting report. Try again.';
+        msgEl.textContent = t('complaint_error','Error submitting report. Try again.');
         msgEl.style.color = '#dc2626';
     });
 }
